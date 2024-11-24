@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <!-- Conversations List -->
+        <div class="col-md-4 border-end">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>Messages</h4>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newMessageModal">
+                    New Message
+                </button>
+            </div>
+            <div class="list-group">
+                {% for conversation in conversations %}
+                    {% set other_user = conversation.participants|selectattr('id', 'ne', current_user.id)|first %}
+                    {% set last_message = conversation.messages|last if conversation.messages else None %}
+                    <a href="{{ url_for('messages', conversation_id=conversation.id) }}" 
+                       class="list-group-item list-group-item-action {% if conversation.id == current_conversation.id %}active{% endif %}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-1">{{ other_user.username }}</h6>
+                            {% if last_message %}
+                                <small>{{ last_message.timestamp.strftime('%H:%M') }}</small>
+                            {% endif %}
+                        </div>
+                        {% if last_message %}
+                            <p class="mb-1 text-truncate">{{ last_message.content }}</p>
+                            {% set unread = namespace(count=0) %}
+                            {% for message in conversation.messages %}
+                                {% if not message.is_read and message.sender_id != current_user.id %}
+                                    {% set unread.count = unread.count + 1 %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if unread.count > 0 %}
+                                <span class="badge bg-primary rounded-pill">{{ unread.count }}</span>
+                            {% endif %}
+                        {% else %}
+                            <p class="mb-1 text-muted">No messages yet</p>
+                        {% endif %}
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Message Thread -->
+        <div class="col-md-8">
+            {% if current_conversation %}
+                {% set other_user = current_conversation.participants|selectattr('id', 'ne', current_user.id)|first %}
+                <h4 class="mb-3">{{ other_user.username }}</h4>
+                <div class="message-thread mb-3" id="messageThread" style="height: 60vh; overflow-y: auto;">
+                    {% for message in current_conversation.messages %}
+                        <div class="message mb-2 {% if message.sender_id == current_user.id %}text-end{% endif %}">
+                            <div class="message-content {% if message.sender_id == current_user.id %}sent{% else %}received{% endif %} 
+                                     d-inline-block p-2 rounded"
+                                 style="max-width: 70%; {% if message.sender_id == current_user.id %}background-color: #007bff; color: white;{% else %}background-color: #f8f9fa;{% endif %}">
+                                {{ message.content }}
+                                <br>
+                                <small class="text-muted" style="font-size: 0.7em;">
+                                    {{ message.timestamp.strftime('%H:%M') }}
+                                    {% if message.sender_id == current_user.id %}
+                                        <i class="fas fa-check{% if message.is_read %}-double{% endif %}"></i>
+                                    {% endif %}
+                                </small>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <form method="POST" action="{{ url_for('send_message', conversation_id=current_conversation.id) }}" class="message-form">
+                    <div class="input-group">
+                        <input type="text" name="content" class="form-control" placeholder="Type a message..." required>
+                        <button type="submit" class="btn btn-primary">Send</button>
+                    </div>
+                </form>
+            {% else %}
+                <div class="text-center text-muted mt-5">
+                    <h5>Select a conversation or start a new one</h5>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- New Message Modal -->
+<div class="modal fade" id="newMessageModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">New Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('new_conversation') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="recipient" class="form-label">To:</label>
+                        <input type="text" class="form-control" id="recipient" name="recipient" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="message" class="form-label">Message:</label>
+                        <textarea class="form-control" id="message" name="message" rows="3" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Send</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Scroll to bottom of message thread
+    function scrollToBottom() {
+        var messageThread = document.getElementById('messageThread');
+        if (messageThread) {
+            messageThread.scrollTop = messageThread.scrollHeight;
+        }
+    }
+
+    // Scroll on page load
+    scrollToBottom();
+
+    // Check for new messages every 3 seconds
+    setInterval(function() {
+        {% if current_conversation %}
+            fetch('{{ url_for("get_messages", conversation_id=current_conversation.id) }}')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.messages) {
+                        const messageThread = document.getElementById('messageThread');
+                        messageThread.innerHTML = '';
+                        data.messages.forEach(message => {
+                            const messageDiv = document.createElement('div');
+                            messageDiv.className = `message mb-2 ${message.sender_id === {{ current_user.id }} ? 'text-end' : ''}`;
+                            messageDiv.innerHTML = `
+                                <div class="message-content ${message.sender_id === {{ current_user.id }} ? 'sent' : 'received'} 
+                                         d-inline-block p-2 rounded"
+                                     style="max-width: 70%; ${message.sender_id === {{ current_user.id }} ? 'background-color: #007bff; color: white;' : 'background-color: #f8f9fa;'}">
+                                    ${message.content}
+                                    <br>
+                                    <small class="text-muted" style="font-size: 0.7em;">
+                                        ${message.timestamp}
+                                        ${message.sender_id === {{ current_user.id }} ? 
+                                            `<i class="fas fa-check${message.is_read ? '-double' : ''}"></i>` : ''}
+                                    </small>
+                                </div>
+                            `;
+                            messageThread.appendChild(messageDiv);
+                        });
+                        scrollToBottom();
+                    }
+                });
+        {% endif %}
+    }, 3000);
+</script>
+
+{% endblock %}

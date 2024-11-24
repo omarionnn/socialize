@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/moment@latest/min/moment.min.js"></script>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-gradient mb-4">
@@ -28,6 +29,22 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('user_profile', username=current_user.username) }}">
                                 <i class="fas fa-user me-1"></i>Profile
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('messages') }}">
+                                <i class="fas fa-envelope me-1"></i>Messages
+                                {% set unread_count = namespace(count=0) %}
+                                {% for conv in current_user.conversations %}
+                                    {% for msg in conv.messages %}
+                                        {% if not msg.is_read and msg.sender_id != current_user.id %}
+                                            {% set unread_count.count = unread_count.count + 1 %}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endfor %}
+                                {% if unread_count.count > 0 %}
+                                    <span class="badge bg-danger rounded-pill">{{ unread_count.count }}</span>
+                                {% endif %}
                             </a>
                         </li>
                         <li class="nav-item">
@@ -87,5 +104,22 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="{{ url_for('static', filename='main.js') }}"></script>
+    
+    <!-- Theme Toggle Script -->
+    <script>
+        // Check for saved theme preference, otherwise use system preference
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+        const storedTheme = localStorage.getItem('theme');
+        
+        if (storedTheme === 'dark' || (!storedTheme && prefersDark.matches)) {
+            document.body.classList.add('dark-mode');
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+    </script>
 </body>
 </html>

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">{{ hashtag }}</h2>
+                <p class="text-muted">{{ tweets|length }} posts</p>
+            </div>
+        </div>
+
+        {% for tweet in tweets %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="card-subtitle mb-2">
+                            <a href="{{ url_for('user_profile', username=tweet.author.username) }}" 
+                               class="text-decoration-none">
+                                @{{ tweet.author.username }}
+                                {% if tweet.author.is_verified %}
+                                    <i class="fas fa-check-circle text-primary"></i>
+                                {% endif %}
+                            </a>
+                        </h6>
+                        <small class="post-timestamp text-muted" data-timestamp="{{ tweet.date_posted.isoformat() }}Z">
+                            {{ tweet.date_posted.strftime('%B %d, %Y at %I:%M %p') }}
+                        </small>
+                    </div>
+                    <p class="card-text">
+                        {% for word in tweet.content.split() %}
+                            {% if word.startswith('#') %}
+                                <a href="{{ url_for('hashtag', tag=word[1:]) }}" class="text-primary">{{ word }}</a>
+                            {% else %}
+                                {{ word }}
+                            {% endif %}
+                        {% endfor %}
+                    </p>
+                    {% if tweet.image %}
+                        <img src="{{ url_for('uploaded_file', filename=tweet.image) }}" 
+                             class="img-fluid rounded mb-3" alt="Post image">
+                    {% endif %}
+                    <div class="d-flex gap-3">
+                        <button class="btn btn-outline-primary btn-sm like-btn {% if current_user in tweet.likes %}active{% endif %}" 
+                                data-tweet-id="{{ tweet.id }}">
+                            <i class="far fa-heart"></i> 
+                            <span class="like-count">{{ tweet.likes|length }}</span>
+                        </button>
+                        <button class="btn btn-outline-success btn-sm retweet-btn {% if current_user in tweet.retweets %}active{% endif %}" 
+                                data-tweet-id="{{ tweet.id }}">
+                            <i class="fas fa-retweet"></i> 
+                            <span class="retweet-count">{{ tweet.retweets|length }}</span>
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="sharePost('{{ tweet.id }}')">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Trending Hashtags</h5>
+                <div class="list-group">
+                    {% for tag in trending_hashtags %}
+                        <a href="{{ url_for('hashtag', tag=tag.name) }}" 
+                           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            #{{ tag.name }}
+                            <span class="badge bg-primary rounded-pill">{{ tag.posts|length }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
