@@ -95,8 +95,8 @@
                         <label for="recipient" class="form-label">Send to:</label>
                         <select class="form-select" id="recipient" name="recipient" required>
                             <option value="">Choose a user you follow...</option>
-                            {% for following in current_user.following %}
-                            <option value="{{ following.followed_id }}">{{ following.followed.username }}</option>
+                            {% for user in followed_users %}
+                            <option value="{{ user.id }}">{{ user.username }}</option>
                             {% endfor %}
                         </select>
                     </div>

@@ -76,7 +76,7 @@ class User(UserMixin, db.Model):
                               foreign_keys='Follow.followed_id',
                               backref=db.backref('followed', lazy='joined'),
                               lazy='dynamic')
-    user_conversations = db.relationship('ConversationParticipants', backref='user', lazy=True)
+    messages_sent = db.relationship('Message', backref='sender', lazy=True)
 
     def is_following(self, user):
         return self.following.filter_by(followed_id=user.id).first() is not None
@@ -111,17 +111,13 @@ class Retweet(db.Model):
 class Conversation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    messages = db.relationship('Message', backref='conversation', lazy=True, order_by='Message.timestamp')
-    participants = db.relationship('User', 
-                                 secondary='conversation_participants',
-                                 backref=db.backref('conversations', lazy=True),
-                                 lazy='joined')
+    participants = db.relationship('ConversationParticipants', backref='conversation', lazy=True)
+    messages = db.relationship('Message', backref='conversation', lazy=True)
 
 class ConversationParticipants(db.Model):
-    __tablename__ = 'conversation_participants'
-    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id'), primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
-    last_read = db.Column(db.DateTime, default=datetime.utcnow)
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -131,7 +127,7 @@ class Message(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     is_read = db.Column(db.Boolean, default=False)
     
-    sender = db.relationship('User', backref='sent_messages')
+    sender = db.relationship('User', backref='messages_sent', foreign_keys=[sender_id])
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -382,23 +378,30 @@ def uploaded_file(filename):
 @app.route('/messages/<int:conversation_id>')
 @login_required
 def messages(conversation_id=None):
-    conversations = current_user.conversations
+    # Get all conversations where the user is a participant
+    user_participants = ConversationParticipants.query.filter_by(user_id=current_user.id).all()
+    conversations = [p.conversation for p in user_participants]
+    
+    # Sort conversations by latest message
+    conversations.sort(key=lambda x: x.messages[-1].timestamp if x.messages else x.created_at, reverse=True)
+    
     current_conversation = None
     if conversation_id:
         current_conversation = Conversation.query.get_or_404(conversation_id)
-        # Mark messages as read
-        unread_messages = Message.query.filter_by(
+        # Verify user is a participant
+        if not ConversationParticipants.query.filter_by(
             conversation_id=conversation_id,
-            is_read=False
-        ).filter(Message.sender_id != current_user.id).all()
-        for message in unread_messages:
-            message.is_read = True
-        db.session.commit()
-    users = User.query.filter(User.id != current_user.id).all()
+            user_id=current_user.id
+        ).first():
+            abort(403)
+    
+    # Get users that the current user follows for the new message dropdown
+    followed_users = [follow.followed for follow in current_user.following]
+    
     return render_template('messages.html', 
                          conversations=conversations,
                          current_conversation=current_conversation,
-                         users=users)
+                         followed_users=followed_users)
 
 @app.route('/new_conversation', methods=['POST'])
 @login_required
@@ -418,6 +421,12 @@ def new_conversation():
             app.logger.error('Missing recipient or message')
             return jsonify({'error': 'Missing recipient or message'}), 400
 
+        try:
+            recipient_id = int(recipient_id)
+        except ValueError:
+            app.logger.error(f'Invalid recipient_id format: {recipient_id}')
+            return jsonify({'error': 'Invalid recipient ID'}), 400
+
         # Check if recipient exists
         recipient = User.query.get(recipient_id)
         if not recipient:
@@ -430,22 +439,32 @@ def new_conversation():
             return jsonify({'error': 'You can only send messages to users you follow'}), 403
 
         # Check if conversation exists
-        conversation = Conversation.query.filter(
-            Conversation.participants.any(user_id=current_user.id),
-            Conversation.participants.any(user_id=recipient_id)
-        ).first()
+        existing_participants = ConversationParticipants.query.filter_by(user_id=current_user.id).all()
+        conversation = None
+        
+        for participant in existing_participants:
+            conv = participant.conversation
+            other_participant = ConversationParticipants.query.filter_by(
+                conversation_id=conv.id,
+                user_id=recipient_id
+            ).first()
+            
+            if other_participant:
+                conversation = conv
+                break
 
         if not conversation:
             app.logger.info('Creating new conversation')
             # Create new conversation
             conversation = Conversation()
             db.session.add(conversation)
-            db.session.flush()
+            db.session.flush()  # Get the conversation ID
 
             # Add participants
             participant1 = ConversationParticipants(conversation_id=conversation.id, user_id=current_user.id)
             participant2 = ConversationParticipants(conversation_id=conversation.id, user_id=recipient_id)
             db.session.add_all([participant1, participant2])
+            db.session.flush()
         else:
             app.logger.info(f'Using existing conversation: {conversation.id}')
 
