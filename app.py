@@ -8,6 +8,9 @@ import logging
 from werkzeug.utils import secure_filename
 import re
 from flask_wtf.csrf import CSRFProtect
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField
+from wtforms.validators import DataRequired, Length, Email
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -143,6 +146,24 @@ def load_user(user_id):
     logger.debug('Loading user with id: %s', user_id)
     return User.query.get(int(user_id))
 
+class RegistrationForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired(), Length(min=2, max=20)])
+    email = StringField('Email', validators=[DataRequired(), Email()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Sign Up')
+
+class TweetForm(FlaskForm):
+    content = StringField('Content', validators=[DataRequired(), Length(max=280)])
+    submit = SubmitField('Post')
+
+class LoginForm(FlaskForm):
+    email = StringField('Email', validators=[DataRequired(), Email()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Login')
+
+class FollowForm(FlaskForm):
+    submit = SubmitField('Follow')
+
 # Routes
 @app.route('/')
 @app.route('/home')
@@ -150,16 +171,14 @@ def home():
     logger.debug('Home route accessed')
     if current_user.is_authenticated:
         logger.debug('User is authenticated, retrieving followed users')
-        followed_users = [follow.followed_id for follow in current_user.following.all()]
-        followed_users.append(current_user.id)
-        tweets = Tweet.query.filter(Tweet.user_id.in_(followed_users)).order_by(Tweet.date_posted.desc()).all()
+        tweets = Tweet.query.order_by(Tweet.date_posted.desc()).all()
     else:
         logger.debug('User is not authenticated, retrieving all tweets')
         tweets = Tweet.query.order_by(Tweet.date_posted.desc()).all()
-    
-    # Get all users for the discover section
+
+    form = TweetForm()
     all_users = User.query.all()
-    return render_template('home.html', tweets=tweets, all_users=all_users)
+    return render_template('home.html', tweets=tweets, all_users=all_users, form=form)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -167,19 +186,41 @@ def register():
     if current_user.is_authenticated:
         logger.debug('User already authenticated, redirecting to home')
         return redirect(url_for('home'))
-    if request.method == 'POST':
+    
+    form = RegistrationForm()
+    if form.validate_on_submit():
         logger.debug('Processing POST request')
-        hashed_password = bcrypt.generate_password_hash(request.form['password']).decode('utf-8')
-        user = User(username=request.form['username'],
-                   email=request.form['email'],
-                   password=hashed_password)
-        db.session.add(user)
-        db.session.commit()
-        logger.debug('User registered successfully')
-        flash('Account created successfully!', 'success')
-        return redirect(url_for('login'))
+        
+        # Check if username already exists
+        existing_user = User.query.filter_by(username=form.username.data).first()
+        if existing_user:
+            flash('That username is already taken. Please choose a different one.', 'danger')
+            return render_template('register.html', form=form)
+        
+        # Check if email already exists
+        existing_user = User.query.filter_by(email=form.email.data).first()
+        if existing_user:
+            flash('That email is already registered. Please use a different one.', 'danger')
+            return render_template('register.html', form=form)
+        
+        try:
+            hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
+            user = User(username=form.username.data,
+                       email=form.email.data,
+                       password=hashed_password)
+            db.session.add(user)
+            db.session.commit()
+            logger.debug('User registered successfully')
+            flash('Account created successfully! You can now log in.', 'success')
+            return redirect(url_for('login'))
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f'Error during registration: {str(e)}')
+            flash('An error occurred during registration. Please try again.', 'danger')
+            return render_template('register.html', form=form)
+    
     logger.debug('Rendering register template')
-    return render_template('register.html')
+    return render_template('register.html', form=form)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -187,18 +228,22 @@ def login():
     if current_user.is_authenticated:
         logger.debug('User already authenticated, redirecting to home')
         return redirect(url_for('home'))
-    if request.method == 'POST':
+    
+    form = LoginForm()
+    if form.validate_on_submit():
         logger.debug('Processing POST request')
-        user = User.query.filter_by(email=request.form['email']).first()
-        if user and bcrypt.check_password_hash(user.password, request.form['password']):
-            logger.debug('User authenticated successfully')
+        user = User.query.filter_by(email=form.email.data).first()
+        if user and bcrypt.check_password_hash(user.password, form.password.data):
             login_user(user)
-            return redirect(url_for('home'))
+            logger.debug('User logged in successfully')
+            next_page = request.args.get('next')
+            return redirect(next_page) if next_page else redirect(url_for('home'))
         else:
-            logger.debug('User authentication failed')
-            flash('Login unsuccessful. Please check email and password.', 'danger')
+            logger.debug('Login failed - invalid credentials')
+            flash('Invalid email or password', 'danger')
+    
     logger.debug('Rendering login template')
-    return render_template('login.html')
+    return render_template('login.html', form=form)
 
 @app.route('/logout')
 def logout():
@@ -209,33 +254,24 @@ def logout():
 @app.route('/new_tweet', methods=['POST'])
 @login_required
 def new_tweet():
-    content = request.form.get('content')
-    if not content:
-        flash('Tweet cannot be empty!', 'danger')
-        return redirect(url_for('home'))
+    form = TweetForm()
+    if form.validate_on_submit():
+        tweet = Tweet(content=form.content.data, author=current_user)
         
-    # Handle image upload
-    image_filename = None
-    if 'image' in request.files:
-        file = request.files['image']
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            image_filename = f"post_images/{filename}"
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], 'post_images', filename))
-
-    tweet = Tweet(content=content, author=current_user, image=image_filename)
-    
-    # Extract and save hashtags
-    hashtags = tweet.extract_hashtags()
-    for tag_name in hashtags:
-        tag = Hashtag.query.filter_by(name=tag_name.lower()).first()
-        if not tag:
-            tag = Hashtag(name=tag_name.lower())
-            db.session.add(tag)
-        tweet.hashtags.append(tag)
-    
-    db.session.add(tweet)
-    db.session.commit()
+        # Handle image upload
+        if 'image' in request.files:
+            file = request.files['image']
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], 'post_images', filename))
+                tweet.image = os.path.join('post_images', filename)
+        
+        # Extract and create hashtags
+        tweet.extract_hashtags()
+        
+        db.session.add(tweet)
+        db.session.commit()
+        flash('Your tweet has been posted!', 'success')
     return redirect(url_for('home'))
 
 @app.route('/upload_profile_pic', methods=['POST'])
@@ -345,25 +381,30 @@ def user_profile(username):
     logger.debug('User profile route accessed')
     user = User.query.filter_by(username=username).first_or_404()
     tweets = Tweet.query.filter_by(author=user).order_by(Tweet.date_posted.desc()).all()
-    return render_template('profile.html', user=user, tweets=tweets)
+    form = FollowForm()
+    return render_template('profile.html', user=user, tweets=tweets, form=form)
 
 @app.route('/follow/<string:username>', methods=['POST'])
 @login_required
 def follow(username):
-    logger.debug('Follow route accessed')
-    user = User.query.filter_by(username=username).first()
-    if user is None:
-        logger.debug('User not found')
-        flash(f'User {username} not found.', 'error')
-        return redirect(url_for('home'))
-    if user == current_user:
-        logger.debug('User cannot follow themselves')
-        flash('You cannot follow yourself!', 'error')
+    form = FollowForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(username=username).first_or_404()
+        if user == current_user:
+            flash('You cannot follow yourself!', 'danger')
+            return redirect(url_for('user_profile', username=username))
+        
+        if current_user.is_following(user):
+            current_user.following.remove(user)
+            flash(f'You have unfollowed {username}!', 'success')
+        else:
+            follow = Follow(follower_id=current_user.id, followed_id=user.id)
+            db.session.add(follow)
+            flash(f'You are now following {username}!', 'success')
+        
+        db.session.commit()
         return redirect(url_for('user_profile', username=username))
-    logger.debug('User followed successfully')
-    current_user.following.append(Follow(followed=user))
-    db.session.commit()
-    flash(f'You are now following {username}!', 'success')
+    
     return redirect(url_for('user_profile', username=username))
 
 @app.route('/edit_profile', methods=['GET', 'POST'])

@@ -1,3 +1,14 @@
+// Set up CSRF token for all AJAX requests
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+$.ajaxSetup({
+    beforeSend: function(xhr, settings) {
+        if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+            xhr.setRequestHeader("X-CSRFToken", csrfToken);
+        }
+    }
+});
+
 // Character Counter
 const tweetContent = document.getElementById('tweetContent');
 const charCounter = document.getElementById('charCounter');
@@ -84,6 +95,7 @@ document.querySelectorAll('.like-btn').forEach(button => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
             },
         })
         .then(response => response.json())
@@ -105,13 +117,15 @@ document.querySelectorAll('.retweet-btn').forEach(button => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
             },
         })
         .then(response => response.json())
         .then(data => {
             this.querySelector('.retweet-count').textContent = data.retweets;
-            this.classList.toggle('active');
             const icon = this.querySelector('i');
+            icon.classList.toggle('far');
+            icon.classList.toggle('fas');
             icon.classList.toggle('text-success');
         })
         .catch(error => console.error('Error:', error));
@@ -134,7 +148,7 @@ async function sendNewMessage() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({
                 recipient_id: recipientId,

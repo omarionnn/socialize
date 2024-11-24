@@ -16,13 +16,9 @@
                     </div>
                     {% if current_user.is_authenticated and user != current_user %}
                         <form action="{{ url_for('follow', username=user.username) }}" method="POST">
-                            <button type="submit" class="btn btn-primary w-100">
-                                {% if current_user.following.filter_by(followed_id=user.id).first() %}
-                                    Unfollow
-                                {% else %}
-                                    Follow
-                                {% endif %}
-                            </button>
+                            {{ form.hidden_tag() }}
+                            {{ form.submit(class="btn btn-primary w-100", 
+                                value="Unfollow" if current_user.is_following(user) else "Follow") }}
                         </form>
                     {% endif %}
                 </div>

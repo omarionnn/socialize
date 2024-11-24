@@ -6,6 +6,7 @@
                 <div class="card mb-4">
                     <div class="card-body">
                         <form method="POST" action="{{ url_for('new_tweet') }}" enctype="multipart/form-data" class="mb-4">
+                            {{ form.hidden_tag() }}
                             <div class="form-group">
                                 <textarea class="form-control" id="tweetContent" name="content" rows="3" placeholder="What's happening?" maxlength="280"></textarea>
                                 <div class="d-flex justify-content-between align-items-center mt-2">
