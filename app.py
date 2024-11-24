@@ -58,7 +58,7 @@ tweet_hashtags = db.Table('tweet_hashtags',
     db.Column('hashtag_id', db.Integer, db.ForeignKey('hashtag.id'), primary_key=True)
 )
 
-class User(UserMixin, db.Model):
+class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -68,15 +68,23 @@ class User(UserMixin, db.Model):
     cover_photo = db.Column(db.String(100), default='default_cover.jpg')
     is_verified = db.Column(db.Boolean, default=False)
     tweets = db.relationship('Tweet', backref='author', lazy=True)
+    likes = db.relationship('Like', backref='user', lazy=True)
+    retweets = db.relationship('Retweet', backref='user', lazy=True)
     following = db.relationship('Follow',
-                              foreign_keys='Follow.follower_id',
-                              backref=db.backref('follower', lazy='joined'),
-                              lazy='dynamic')
+                            foreign_keys='Follow.follower_id',
+                            backref=db.backref('follower', lazy='joined'),
+                            lazy='dynamic')
     followers = db.relationship('Follow',
-                              foreign_keys='Follow.followed_id',
-                              backref=db.backref('followed', lazy='joined'),
-                              lazy='dynamic')
-    messages_sent = db.relationship('Message', backref='sender', lazy=True)
+                            foreign_keys='Follow.followed_id',
+                            backref=db.backref('followed', lazy='joined'),
+                            lazy='dynamic')
+    messages_sent = db.relationship('Message',
+                                foreign_keys='Message.sender_id',
+                                backref=db.backref('sender', lazy=True),
+                                lazy='dynamic')
+    conversations = db.relationship('ConversationParticipants',
+                                backref=db.backref('user', lazy=True),
+                                lazy='dynamic')
 
     def is_following(self, user):
         return self.following.filter_by(followed_id=user.id).first() is not None
@@ -108,17 +116,6 @@ class Retweet(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     tweet_id = db.Column(db.Integer, db.ForeignKey('tweet.id'), nullable=False)
 
-class Conversation(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    participants = db.relationship('ConversationParticipants', backref='conversation', lazy=True)
-    messages = db.relationship('Message', backref='conversation', lazy=True)
-
-class ConversationParticipants(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id'), nullable=False)
@@ -126,8 +123,17 @@ class Message(db.Model):
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     is_read = db.Column(db.Boolean, default=False)
-    
-    sender = db.relationship('User', backref='messages_sent', foreign_keys=[sender_id])
+
+class Conversation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    messages = db.relationship('Message', backref='conversation', lazy='dynamic', order_by='Message.timestamp')
+    participants = db.relationship('ConversationParticipants', backref='conversation', lazy=True)
+
+class ConversationParticipants(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
