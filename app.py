@@ -7,6 +7,7 @@ import os
 import logging
 from werkzeug.utils import secure_filename
 import re
+from flask_wtf.csrf import CSRFProtect
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -22,6 +23,7 @@ os.makedirs(instance_dir, exist_ok=True)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
+csrf = CSRFProtect(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -401,49 +403,72 @@ def messages(conversation_id=None):
 @app.route('/new_conversation', methods=['POST'])
 @login_required
 def new_conversation():
-    data = request.get_json()
-    recipient_id = data.get('recipient_id')
-    message_content = data.get('message')
+    try:
+        data = request.get_json()
+        if not data:
+            app.logger.error('No JSON data received')
+            return jsonify({'error': 'No data received'}), 400
 
-    if not recipient_id or not message_content:
-        return jsonify({'error': 'Missing recipient or message'}), 400
+        recipient_id = data.get('recipient_id')
+        message_content = data.get('message')
 
-    # Check if recipient exists
-    recipient = User.query.get(recipient_id)
-    if not recipient:
-        return jsonify({'error': 'Recipient not found'}), 404
+        app.logger.info(f'Received request: recipient_id={recipient_id}, message={message_content}')
 
-    # Check if user follows the recipient
-    if not current_user.is_following(recipient):
-        return jsonify({'error': 'You can only send messages to users you follow'}), 403
+        if not recipient_id or not message_content:
+            app.logger.error('Missing recipient or message')
+            return jsonify({'error': 'Missing recipient or message'}), 400
 
-    # Check if conversation exists
-    conversation = Conversation.query.filter(
-        Conversation.participants.any(user_id=current_user.id),
-        Conversation.participants.any(user_id=recipient_id)
-    ).first()
+        # Check if recipient exists
+        recipient = User.query.get(recipient_id)
+        if not recipient:
+            app.logger.error(f'Recipient not found: {recipient_id}')
+            return jsonify({'error': 'Recipient not found'}), 404
 
-    if not conversation:
-        # Create new conversation
-        conversation = Conversation()
-        db.session.add(conversation)
-        db.session.flush()
+        # Check if user follows the recipient
+        if not current_user.is_following(recipient):
+            app.logger.error(f'User {current_user.id} does not follow recipient {recipient_id}')
+            return jsonify({'error': 'You can only send messages to users you follow'}), 403
 
-        # Add participants
-        participant1 = ConversationParticipants(conversation_id=conversation.id, user_id=current_user.id)
-        participant2 = ConversationParticipants(conversation_id=conversation.id, user_id=recipient_id)
-        db.session.add_all([participant1, participant2])
+        # Check if conversation exists
+        conversation = Conversation.query.filter(
+            Conversation.participants.any(user_id=current_user.id),
+            Conversation.participants.any(user_id=recipient_id)
+        ).first()
 
-    # Create and save the message
-    message = Message(
-        conversation_id=conversation.id,
-        sender_id=current_user.id,
-        content=message_content
-    )
-    db.session.add(message)
-    db.session.commit()
+        if not conversation:
+            app.logger.info('Creating new conversation')
+            # Create new conversation
+            conversation = Conversation()
+            db.session.add(conversation)
+            db.session.flush()
 
-    return jsonify({'success': True, 'conversation_id': conversation.id}), 200
+            # Add participants
+            participant1 = ConversationParticipants(conversation_id=conversation.id, user_id=current_user.id)
+            participant2 = ConversationParticipants(conversation_id=conversation.id, user_id=recipient_id)
+            db.session.add_all([participant1, participant2])
+        else:
+            app.logger.info(f'Using existing conversation: {conversation.id}')
+
+        # Create and save the message
+        message = Message(
+            conversation_id=conversation.id,
+            sender_id=current_user.id,
+            content=message_content
+        )
+        db.session.add(message)
+        db.session.commit()
+
+        app.logger.info(f'Message sent successfully in conversation {conversation.id}')
+        return jsonify({
+            'success': True,
+            'conversation_id': conversation.id,
+            'message': 'Message sent successfully'
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f'Error in new_conversation: {str(e)}')
+        db.session.rollback()
+        return jsonify({'error': 'An error occurred while sending the message'}), 500
 
 @app.route('/messages/<int:conversation_id>/send', methods=['POST'])
 @login_required
@@ -519,6 +544,11 @@ def get_messages(conversation_id):
         })
     
     return jsonify({'messages': messages_data})
+
+@app.after_request
+def after_request(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 if __name__ == '__main__':
     with app.app_context():

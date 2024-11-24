@@ -122,6 +122,8 @@ async function sendNewMessage() {
     const recipientId = document.getElementById('recipient').value;
     const messageContent = document.getElementById('messageContent').value;
 
+    console.log('Sending message:', { recipientId, messageContent });
+
     if (!recipientId || !messageContent) {
         alert('Please select a recipient and enter a message');
         return;
@@ -132,6 +134,7 @@ async function sendNewMessage() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
             },
             body: JSON.stringify({
                 recipient_id: recipientId,
@@ -139,19 +142,21 @@ async function sendNewMessage() {
             })
         });
 
+        console.log('Response status:', response.status);
+        const responseData = await response.json();
+        console.log('Response data:', responseData);
+
         if (response.ok) {
-            const result = await response.json();
             // Close the modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('newMessageModal'));
             modal.hide();
             // Refresh the conversation list
             window.location.reload();
         } else {
-            const error = await response.json();
-            alert(error.error || 'Failed to send message');
+            alert(responseData.error || 'Failed to send message');
         }
     } catch (error) {
         console.error('Error:', error);
-        alert('Failed to send message');
+        alert('Failed to send message. Check console for details.');
     }
 }
