@@ -29,6 +29,14 @@ A modern social networking platform built with Flask and Bootstrap 5, featuring 
 - Real-time updates using AJAX
 - Font Awesome icons for better visual feedback
 
+### Direct Messaging System
+- Real-time private messaging between users
+- Conversation management with unread indicators
+- Read receipts and message timestamps
+- Real-time message updates (3-second polling)
+- Multi-user conversation support
+- Message threading with sender/receiver bubbles
+
 ## Technology Stack
 
 - **Backend**: Python 3.x with Flask 2.2.5
@@ -111,6 +119,42 @@ http://localhost:8000
    - Check real-time updates of like/repost counts
    - Test navigation between profiles and home page
 
+5. **Testing the Messaging System**
+
+1. **Initial Setup**:
+   - Register two test accounts (if not already done)
+   - Log in with the first account
+   - Navigate to Messages section
+   - Click "New Message"
+   - Select the second user as recipient
+
+2. **Basic Messaging**:
+   - Send a test message from User 1
+   - Log in as User 2 in a different browser/incognito window
+   - Verify message received
+   - Send reply from User 2
+   - Check real-time updates on both ends
+
+3. **Read Receipts**:
+   - As User 1, send a new message
+   - Note the single check mark (✓)
+   - Log in as User 2 and open the conversation
+   - Verify the check mark changes to double (✓✓)
+
+4. **Unread Messages**:
+   - Log out User 2
+   - Send multiple messages as User 1
+   - Log back in as User 2
+   - Verify unread message counter in navigation
+   - Check counter disappears after reading
+
+5. **Edge Cases**:
+   - Test empty messages (should be prevented)
+   - Try long messages
+   - Test rapid message sending
+   - Verify proper message ordering
+   - Check timestamp accuracy
+
 ## Project Structure
 
 ```
@@ -147,7 +191,6 @@ twitter_mod/
 
 ## Future Enhancements
 
-- Direct messaging between users
 - Email notifications
 - Hashtag support
 - Media uploads (images, videos)
