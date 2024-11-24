@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title">@{{ user.username }}</h4>
+                    <p class="text-muted">{{ user.email }}</p>
+                    <div class="d-flex justify-content-between mb-3">
+                        <div>
+                            <strong>{{ user.followers.count() }}</strong> Followers
+                        </div>
+                        <div>
+                            <strong>{{ user.following.count() }}</strong> Following
+                        </div>
+                    </div>
+                    {% if current_user.is_authenticated and user != current_user %}
+                        <form action="{{ url_for('follow', username=user.username) }}" method="POST">
+                            <button type="submit" class="btn btn-primary w-100">
+                                {% if current_user.following.filter_by(followed_id=user.id).first() %}
+                                    Unfollow
+                                {% else %}
+                                    Follow
+                                {% endif %}
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <h3 class="mb-4">Tweets</h3>
+            {% for tweet in tweets %}
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            {{ tweet.date_posted.strftime('%B %d, %Y') }}
+                        </h6>
+                        <p class="card-text">{{ tweet.content }}</p>
+                        <div class="d-flex gap-3">
+                            <button class="btn btn-outline-primary btn-sm like-btn" data-tweet-id="{{ tweet.id }}">
+                                <i class="far fa-heart"></i> <span class="like-count">{{ tweet.likes|length }}</span>
+                            </button>
+                            <button class="btn btn-outline-success btn-sm retweet-btn" data-tweet-id="{{ tweet.id }}">
+                                <i class="fas fa-retweet"></i> <span class="retweet-count">{{ tweet.retweets|length }}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock %}
