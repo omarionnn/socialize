@@ -81,29 +81,34 @@
 </div>
 
 <!-- New Message Modal -->
-<div class="modal fade" id="newMessageModal" tabindex="-1">
+<div class="modal fade" id="newMessageModal" tabindex="-1" aria-labelledby="newMessageModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">New Message</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="newMessageModalLabel">New Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="POST" action="{{ url_for('new_conversation') }}">
-                <div class="modal-body">
+            <div class="modal-body">
+                <form id="newMessageForm">
                     <div class="mb-3">
-                        <label for="recipient" class="form-label">To:</label>
-                        <input type="text" class="form-control" id="recipient" name="recipient" required>
+                        <label for="recipient" class="form-label">Send to:</label>
+                        <select class="form-select" id="recipient" name="recipient" required>
+                            <option value="">Choose a user you follow...</option>
+                            {% for following in current_user.following %}
+                            <option value="{{ following.followed_id }}">{{ following.followed.username }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="mb-3">
-                        <label for="message" class="form-label">Message:</label>
-                        <textarea class="form-control" id="message" name="message" rows="3" required></textarea>
+                        <label for="messageContent" class="form-label">Message:</label>
+                        <textarea class="form-control" id="messageContent" name="messageContent" rows="3" required></textarea>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary">Send</button>
-                </div>
-            </form>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="sendNewMessage()">Send Message</button>
+            </div>
         </div>
     </div>
 </div>

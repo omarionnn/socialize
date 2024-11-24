@@ -76,6 +76,9 @@ class User(UserMixin, db.Model):
                               lazy='dynamic')
     user_conversations = db.relationship('ConversationParticipants', backref='user', lazy=True)
 
+    def is_following(self, user):
+        return self.following.filter_by(followed_id=user.id).first() is not None
+
 class Tweet(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.String(280), nullable=False)
@@ -395,40 +398,43 @@ def messages(conversation_id=None):
                          current_conversation=current_conversation,
                          users=users)
 
-@app.route('/messages/new', methods=['POST'])
+@app.route('/new_conversation', methods=['POST'])
 @login_required
 def new_conversation():
-    recipient_id = request.form.get('recipient')
-    message_content = request.form.get('message')
-    
+    data = request.get_json()
+    recipient_id = data.get('recipient_id')
+    message_content = data.get('message')
+
     if not recipient_id or not message_content:
-        flash('Please provide both recipient and message.', 'danger')
-        return redirect(url_for('messages'))
-    
-    # Check if conversation already exists
-    existing_conversations = current_user.conversations
-    for conv in existing_conversations:
-        if len(conv.participants) == 2:
-            other_user = [p for p in conv.participants if p.id != current_user.id][0]
-            if other_user.id == int(recipient_id):
-                # Add message to existing conversation
-                message = Message(
-                    conversation_id=conv.id,
-                    sender_id=current_user.id,
-                    content=message_content
-                )
-                db.session.add(message)
-                db.session.commit()
-                return redirect(url_for('messages', conversation_id=conv.id))
-    
-    # Create new conversation
-    conversation = Conversation()
-    conversation.participants.append(current_user)
-    conversation.participants.append(User.query.get(recipient_id))
-    db.session.add(conversation)
-    db.session.flush()
-    
-    # Add first message
+        return jsonify({'error': 'Missing recipient or message'}), 400
+
+    # Check if recipient exists
+    recipient = User.query.get(recipient_id)
+    if not recipient:
+        return jsonify({'error': 'Recipient not found'}), 404
+
+    # Check if user follows the recipient
+    if not current_user.is_following(recipient):
+        return jsonify({'error': 'You can only send messages to users you follow'}), 403
+
+    # Check if conversation exists
+    conversation = Conversation.query.filter(
+        Conversation.participants.any(user_id=current_user.id),
+        Conversation.participants.any(user_id=recipient_id)
+    ).first()
+
+    if not conversation:
+        # Create new conversation
+        conversation = Conversation()
+        db.session.add(conversation)
+        db.session.flush()
+
+        # Add participants
+        participant1 = ConversationParticipants(conversation_id=conversation.id, user_id=current_user.id)
+        participant2 = ConversationParticipants(conversation_id=conversation.id, user_id=recipient_id)
+        db.session.add_all([participant1, participant2])
+
+    # Create and save the message
     message = Message(
         conversation_id=conversation.id,
         sender_id=current_user.id,
@@ -436,8 +442,8 @@ def new_conversation():
     )
     db.session.add(message)
     db.session.commit()
-    
-    return redirect(url_for('messages', conversation_id=conversation.id))
+
+    return jsonify({'success': True, 'conversation_id': conversation.id}), 200
 
 @app.route('/messages/<int:conversation_id>/send', methods=['POST'])
 @login_required

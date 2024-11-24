@@ -117,3 +117,41 @@ document.querySelectorAll('.retweet-btn').forEach(button => {
         .catch(error => console.error('Error:', error));
     });
 });
+
+async function sendNewMessage() {
+    const recipientId = document.getElementById('recipient').value;
+    const messageContent = document.getElementById('messageContent').value;
+
+    if (!recipientId || !messageContent) {
+        alert('Please select a recipient and enter a message');
+        return;
+    }
+
+    try {
+        const response = await fetch('/new_conversation', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                recipient_id: recipientId,
+                message: messageContent
+            })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            // Close the modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('newMessageModal'));
+            modal.hide();
+            // Refresh the conversation list
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert(error.error || 'Failed to send message');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to send message');
+    }
+}
