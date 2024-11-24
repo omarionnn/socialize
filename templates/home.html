@@ -62,12 +62,14 @@
                         {% endif %}
                         <div class="d-flex gap-3">
                             <button class="btn btn-outline-primary btn-sm like-btn" data-tweet-id="{{ tweet.id }}">
-                                <i class="far fa-heart"></i> <span class="like-count">{{ tweet.likes|length }}</span>
+                                <i class="{% if current_user in [like.user_id for like in tweet.likes] %}fas text-danger{% else %}far{% endif %} fa-heart"></i>
+                                <span class="like-count">{{ tweet.likes|length }}</span>
                             </button>
                             <button class="btn btn-outline-success btn-sm retweet-btn" data-tweet-id="{{ tweet.id }}">
-                                <i class="fas fa-retweet"></i> <span class="retweet-count">{{ tweet.retweets|length }}</span>
+                                <i class="fas fa-retweet {% if current_user in [retweet.user_id for retweet in tweet.retweets] %}text-success{% endif %}"></i>
+                                <span class="retweet-count">{{ tweet.retweets|length }}</span>
                             </button>
-                            <button class="share-button" onclick="sharePost('{{ tweet.id }}')">
+                            <button class="btn btn-outline-secondary btn-sm share-button" onclick="sharePost('{{ tweet.id }}')">
                                 <i class="fas fa-share-alt"></i>
                             </button>
                         </div>

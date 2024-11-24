@@ -80,23 +80,40 @@ setInterval(updateTimestamps, 30000);
 document.querySelectorAll('.like-btn').forEach(button => {
     button.addEventListener('click', function() {
         const tweetId = this.dataset.tweetId;
-        fetch(`/like/${tweetId}`, { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                this.querySelector('.like-count').textContent = data.likes;
-                this.classList.toggle('active');
-            });
+        fetch(`/tweet/${tweetId}/like`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            this.querySelector('.like-count').textContent = data.likes;
+            const icon = this.querySelector('i');
+            icon.classList.toggle('far');
+            icon.classList.toggle('fas');
+            icon.classList.toggle('text-danger');
+        })
+        .catch(error => console.error('Error:', error));
     });
 });
 
 document.querySelectorAll('.retweet-btn').forEach(button => {
     button.addEventListener('click', function() {
         const tweetId = this.dataset.tweetId;
-        fetch(`/retweet/${tweetId}`, { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                this.querySelector('.retweet-count').textContent = data.retweets;
-                this.classList.toggle('active');
-            });
+        fetch(`/tweet/${tweetId}/retweet`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            this.querySelector('.retweet-count').textContent = data.retweets;
+            this.classList.toggle('active');
+            const icon = this.querySelector('i');
+            icon.classList.toggle('text-success');
+        })
+        .catch(error => console.error('Error:', error));
     });
 });
