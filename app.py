@@ -30,11 +30,6 @@ csrf = CSRFProtect(app)  # Initialize CSRF protection
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
-bcrypt = Bcrypt(app)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
-
 # File upload configuration
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -45,6 +40,11 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'profile_pics'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'cover_photos'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'post_images'), exist_ok=True)
+
+db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
 
 # Database Models
 class Hashtag(db.Model):
@@ -61,13 +61,13 @@ tweet_hashtags = db.Table('tweet_hashtags',
     db.Column('hashtag_id', db.Integer, db.ForeignKey('hashtag.id'), primary_key=True)
 )
 
-class User(db.Model, UserMixin):
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(60), nullable=False)
+    profile_pic = db.Column(db.String(120), nullable=False, default='profile_pics/default.jpg')
     bio = db.Column(db.String(500))
-    profile_pic = db.Column(db.String(100), default='default.jpg')
     cover_photo = db.Column(db.String(100), default='default_cover.jpg')
     is_verified = db.Column(db.Boolean, default=False)
     tweets = db.relationship('Tweet', backref='author', lazy=True)
@@ -184,6 +184,10 @@ class LoginForm(FlaskForm):
 class FollowForm(FlaskForm):
     submit = SubmitField('Follow')
 
+class MessageForm(FlaskForm):
+    content = StringField('Message', validators=[DataRequired()])
+    submit = SubmitField('Send')
+
 # Routes
 @app.route('/')
 @app.route('/home')
@@ -299,23 +303,43 @@ def new_tweet():
 def upload_profile_pic():
     if 'profile_pic' not in request.files:
         flash('No file selected', 'danger')
-        return redirect(url_for('edit_profile'))
+        return redirect(url_for('user_profile', username=current_user.username))
     
     file = request.files['profile_pic']
     if file.filename == '':
         flash('No file selected', 'danger')
-        return redirect(url_for('edit_profile'))
-        
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        filepath = f"profile_pics/{filename}"
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], 'profile_pics', filename))
-        
-        current_user.profile_pic = filepath
-        db.session.commit()
-        flash('Profile picture updated successfully!', 'success')
+        return redirect(url_for('user_profile', username=current_user.username))
     
-    return redirect(url_for('edit_profile'))
+    if file and allowed_file(file.filename):
+        try:
+            # Create a secure filename with timestamp
+            filename = secure_filename(file.filename)
+            timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+            filename = f"profile_pics/{timestamp}_{filename}"
+            
+            # Save the file
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            
+            # Delete old profile picture if it exists and it's not the default
+            if current_user.profile_pic != 'profile_pics/default.jpg':
+                old_file = os.path.join(app.config['UPLOAD_FOLDER'], current_user.profile_pic)
+                if os.path.exists(old_file):
+                    os.remove(old_file)
+            
+            # Update user's profile picture in database
+            current_user.profile_pic = filename
+            db.session.commit()
+            
+            flash('Profile picture updated successfully!', 'success')
+        except Exception as e:
+            app.logger.error(f"Error uploading profile picture: {str(e)}")
+            flash('An error occurred while uploading the profile picture', 'danger')
+            
+    else:
+        flash('Invalid file type. Please use jpg, jpeg, png, or gif files.', 'danger')
+    
+    return redirect(url_for('user_profile', username=current_user.username))
 
 @app.route('/upload_cover_photo', methods=['POST'])
 @login_required
@@ -438,7 +462,7 @@ def edit_profile():
         return redirect(url_for('user_profile', username=current_user.username))
     return render_template('edit_profile.html')
 
-@app.route('/uploaded_file/<filename>')
+@app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
@@ -446,30 +470,129 @@ def uploaded_file(filename):
 @app.route('/messages/<int:conversation_id>')
 @login_required
 def messages(conversation_id=None):
-    # Get all conversations where the user is a participant
-    user_participants = ConversationParticipants.query.filter_by(user_id=current_user.id).all()
-    conversations = [p.conversation for p in user_participants]
+    form = MessageForm()  # Create form instance
+    # Get all conversations for the current user
+    user_conversations = ConversationParticipants.query.filter_by(user_id=current_user.id).all()
+    conversations = [p.conversation for p in user_conversations]
     
-    # Sort conversations by latest message
-    conversations.sort(key=lambda x: x.messages[-1].timestamp if x.messages else x.created_at, reverse=True)
+    # Get the latest message for each conversation
+    for conv in conversations:
+        # Convert dynamic query to list to allow last message access
+        conv.latest_message = conv.messages.order_by(Message.timestamp.desc()).first()
     
-    current_conversation = None
+    # Sort conversations by latest message timestamp or creation date
+    conversations.sort(
+        key=lambda x: (x.latest_message.timestamp if x.latest_message else x.created_at),
+        reverse=True
+    )
+    
+    selected_conversation = None
+    messages = []
+    other_participant = None
+    
     if conversation_id:
-        current_conversation = Conversation.query.get_or_404(conversation_id)
-        # Verify user is a participant
-        if not ConversationParticipants.query.filter_by(
-            conversation_id=conversation_id,
-            user_id=current_user.id
-        ).first():
-            abort(403)
+        selected_conversation = Conversation.query.get_or_404(conversation_id)
+        # Check if user is part of this conversation
+        if not any(p.user_id == current_user.id for p in selected_conversation.participants):
+            flash('You do not have access to this conversation.', 'danger')
+            return redirect(url_for('messages'))
+        
+        messages = selected_conversation.messages.order_by(Message.timestamp.asc()).all()
+        # Get the other participant
+        other_participant = next(
+            (p.user for p in selected_conversation.participants if p.user_id != current_user.id),
+            None
+        )
+        
+        # Mark messages as read
+        for message in messages:
+            if message.sender_id != current_user.id and not message.is_read:
+                message.is_read = True
+        db.session.commit()
     
-    # Get users that the current user follows for the new message dropdown
-    followed_users = [follow.followed for follow in current_user.following]
+    return render_template(
+        'messages.html',
+        conversations=conversations,
+        selected_conversation=selected_conversation,
+        messages=messages,
+        other_participant=other_participant,
+        form=form  # Pass form to template
+    )
+
+@app.route('/messages/<int:conversation_id>/send', methods=['POST'])
+@login_required
+def send_message(conversation_id):
+    content = request.form.get('content')
+    if not content:
+        flash('Message cannot be empty.', 'danger')
+        return redirect(url_for('messages', conversation_id=conversation_id))
+        
+    conversation = Conversation.query.get_or_404(conversation_id)
+    if not any(p.user_id == current_user.id for p in conversation.participants):
+        abort(403)
     
-    return render_template('messages.html', 
-                         conversations=conversations,
-                         current_conversation=current_conversation,
-                         followed_users=followed_users)
+    message = Message(
+        conversation_id=conversation_id,
+        sender_id=current_user.id,
+        content=content
+    )
+    db.session.add(message)
+    db.session.commit()
+    
+    return redirect(url_for('messages', conversation_id=conversation_id))
+
+@app.route('/api/messages/<int:conversation_id>/updates')
+@login_required
+def message_updates(conversation_id):
+    conversation = Conversation.query.get_or_404(conversation_id)
+    if current_user not in conversation.participants:
+        abort(403)
+    
+    # Get last read timestamp for current user
+    participant = ConversationParticipants.query.filter_by(
+        conversation_id=conversation_id,
+        user_id=current_user.id
+    ).first()
+    
+    # Get new messages since last read
+    new_messages = Message.query.filter(
+        Message.conversation_id == conversation_id,
+        Message.timestamp > participant.last_read
+    ).all()
+    
+    # Update last read timestamp
+    participant.last_read = datetime.utcnow()
+    db.session.commit()
+    
+    return jsonify({
+        'messages': [{
+            'id': msg.id,
+            'content': msg.content,
+            'sender_id': msg.sender_id,
+            'timestamp': msg.timestamp.strftime('%I:%M %p'),
+            'is_read': msg.is_read
+        } for msg in new_messages]
+    })
+
+@app.route('/get_messages/<int:conversation_id>')
+@login_required
+def get_messages(conversation_id):
+    conversation = Conversation.query.get_or_404(conversation_id)
+    
+    # Check if user is a participant
+    if current_user not in conversation.participants:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    messages_data = []
+    for message in conversation.messages:
+        messages_data.append({
+            'content': message.content,
+            'sender_id': message.sender_id,
+            'timestamp': message.timestamp.strftime('%H:%M'),
+            'is_read': message.is_read
+        })
+    
+    return jsonify({'messages': messages_data})
 
 @app.route('/new_conversation', methods=['POST'])
 @login_required
@@ -556,81 +679,6 @@ def new_conversation():
         app.logger.error(f'Error in new_conversation: {str(e)}')
         db.session.rollback()
         return jsonify({'error': 'An error occurred while sending the message'}), 500
-
-@app.route('/messages/<int:conversation_id>/send', methods=['POST'])
-@login_required
-def send_message(conversation_id):
-    conversation = Conversation.query.get_or_404(conversation_id)
-    if current_user not in conversation.participants:
-        abort(403)
-    
-    content = request.form.get('content')
-    if not content:
-        flash('Message cannot be empty.', 'danger')
-        return redirect(url_for('messages', conversation_id=conversation_id))
-    
-    message = Message(
-        conversation_id=conversation_id,
-        sender_id=current_user.id,
-        content=content
-    )
-    db.session.add(message)
-    db.session.commit()
-    
-    return redirect(url_for('messages', conversation_id=conversation_id))
-
-@app.route('/api/messages/<int:conversation_id>/updates')
-@login_required
-def message_updates(conversation_id):
-    conversation = Conversation.query.get_or_404(conversation_id)
-    if current_user not in conversation.participants:
-        abort(403)
-    
-    # Get last read timestamp for current user
-    participant = ConversationParticipants.query.filter_by(
-        conversation_id=conversation_id,
-        user_id=current_user.id
-    ).first()
-    
-    # Get new messages since last read
-    new_messages = Message.query.filter(
-        Message.conversation_id == conversation_id,
-        Message.timestamp > participant.last_read
-    ).all()
-    
-    # Update last read timestamp
-    participant.last_read = datetime.utcnow()
-    db.session.commit()
-    
-    return jsonify({
-        'messages': [{
-            'id': msg.id,
-            'content': msg.content,
-            'sender_id': msg.sender_id,
-            'timestamp': msg.timestamp.strftime('%I:%M %p'),
-            'is_read': msg.is_read
-        } for msg in new_messages]
-    })
-
-@app.route('/get_messages/<int:conversation_id>')
-@login_required
-def get_messages(conversation_id):
-    conversation = Conversation.query.get_or_404(conversation_id)
-    
-    # Check if user is a participant
-    if current_user not in conversation.participants:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    messages_data = []
-    for message in conversation.messages:
-        messages_data.append({
-            'content': message.content,
-            'sender_id': message.sender_id,
-            'timestamp': message.timestamp.strftime('%H:%M'),
-            'is_read': message.is_read
-        })
-    
-    return jsonify({'messages': messages_data})
 
 @app.after_request
 def after_request(response):

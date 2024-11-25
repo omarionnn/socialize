@@ -1,50 +1,76 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="container mt-4">
     <div class="row">
-        <div class="col-md-4">
+        <div class="col-md-8 offset-md-2">
             <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">{{ user.username }}'s Profile</h4>
+                </div>
                 <div class="card-body">
-                    <h4 class="card-title">@{{ user.username }}</h4>
-                    <p class="text-muted">{{ user.email }}</p>
-                    <div class="d-flex justify-content-between mb-3">
-                        <div>
-                            <strong>{{ user.followers.count() }}</strong> Followers
+                    <div class="text-center mb-4">
+                        <!-- Profile Picture -->
+                        <div class="position-relative d-inline-block">
+                            <img src="{{ url_for('uploaded_file', filename=user.profile_pic) }}" 
+                                 class="rounded-circle mb-3" 
+                                 alt="Profile Picture"
+                                 style="width: 200px; height: 200px; object-fit: cover;">
+                            {% if user == current_user %}
+                                <form id="profilePicForm" action="{{ url_for('upload_profile_pic') }}" method="POST" enctype="multipart/form-data" class="mt-2">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <div class="mb-3">
+                                        <label for="profile_pic" class="form-label">Change Profile Picture</label>
+                                        <input type="file" class="form-control" id="profile_pic" name="profile_pic" accept="image/*" onchange="document.getElementById('profilePicForm').submit();">
+                                    </div>
+                                </form>
+                            {% endif %}
                         </div>
-                        <div>
-                            <strong>{{ user.following.count() }}</strong> Following
+
+                        <!-- User Info -->
+                        <h5 class="card-title">{{ user.username }}</h5>
+                        <p class="card-text">{{ user.bio or "No bio yet" }}</p>
+                        
+                        {% if user != current_user %}
+                            <form action="{{ url_for('follow', username=user.username) }}" method="POST" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn {% if current_user.is_following(user) %}btn-secondary{% else %}btn-primary{% endif %}">
+                                    {% if current_user.is_following(user) %}Unfollow{% else %}Follow{% endif %}
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+
+                    <!-- User Stats -->
+                    <div class="row text-center mb-4">
+                        <div class="col">
+                            <h5>Tweets</h5>
+                            <p>{{ user.tweets|length }}</p>
+                        </div>
+                        <div class="col">
+                            <h5>Following</h5>
+                            <p>{{ user.following.count() }}</p>
+                        </div>
+                        <div class="col">
+                            <h5>Followers</h5>
+                            <p>{{ user.followers.count() }}</p>
                         </div>
                     </div>
-                    {% if current_user.is_authenticated and user != current_user %}
-                        <form action="{{ url_for('follow', username=user.username) }}" method="POST">
-                            {{ form.csrf_token }}
-                            {{ form.submit(class="btn btn-primary w-100", 
-                                value="Unfollow" if current_user.is_following(user) else "Follow") }}
-                        </form>
-                    {% endif %}
+
+                    <!-- User's Tweets -->
+                    <h5 class="mb-3">Recent Tweets</h5>
+                    {% for tweet in user.tweets|sort(attribute='date_posted', reverse=true) %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <p class="card-text">{{ tweet.content }}</p>
+                                <small class="text-muted">{{ tweet.date_posted.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                            </div>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No tweets yet.</p>
+                    {% endfor %}
                 </div>
             </div>
         </div>
-        
-        <div class="col-md-8">
-            <h3 class="mb-4">Tweets</h3>
-            {% for tweet in tweets %}
-                <div class="card mb-3">
-                    <div class="card-body">
-                        <h6 class="card-subtitle mb-2 text-muted">
-                            {{ tweet.date_posted.strftime('%B %d, %Y') }}
-                        </h6>
-                        <p class="card-text">{{ tweet.content }}</p>
-                        <div class="d-flex gap-3">
-                            <button class="btn btn-outline-primary btn-sm like-btn" data-tweet-id="{{ tweet.id }}">
-                                <i class="far fa-heart"></i> <span class="like-count">{{ tweet.likes|length }}</span>
-                            </button>
-                            <button class="btn btn-outline-success btn-sm retweet-btn" data-tweet-id="{{ tweet.id }}">
-                                <i class="fas fa-retweet"></i> <span class="retweet-count">{{ tweet.retweets|length }}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            {% endfor %}
-        </div>
     </div>
+</div>
 {% endblock %}

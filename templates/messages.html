@@ -1,40 +1,28 @@
 {% extends "base.html" %}
-
 {% block content %}
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<div class="container-fluid mt-4">
+<div class="container-fluid">
     <div class="row">
         <!-- Conversations List -->
-        <div class="col-md-4 border-end">
+        <div class="col-md-4 border-right">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h4>Messages</h4>
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newMessageModal">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newConversationModal">
                     New Message
                 </button>
             </div>
             <div class="list-group">
                 {% for conversation in conversations %}
-                    {% set other_user = conversation.participants|selectattr('id', 'ne', current_user.id)|first %}
-                    {% set last_message = conversation.messages|last if conversation.messages else None %}
+                    {% set other_user = conversation.participants | selectattr("user_id", "ne", current_user.id) | first %}
                     <a href="{{ url_for('messages', conversation_id=conversation.id) }}" 
-                       class="list-group-item list-group-item-action {% if conversation.id == current_conversation.id %}active{% endif %}">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="mb-1">{{ other_user.username }}</h6>
-                            {% if last_message %}
-                                <small>{{ last_message.timestamp.strftime('%H:%M') }}</small>
+                       class="list-group-item list-group-item-action {% if selected_conversation and selected_conversation.id == conversation.id %}active{% endif %}">
+                        <div class="d-flex justify-content-between">
+                            <h6 class="mb-1">{{ other_user.user.username }}</h6>
+                            {% if conversation.latest_message %}
+                                <small>{{ conversation.latest_message.timestamp.strftime('%H:%M') }}</small>
                             {% endif %}
                         </div>
-                        {% if last_message %}
-                            <p class="mb-1 text-truncate">{{ last_message.content }}</p>
-                            {% set unread = namespace(count=0) %}
-                            {% for message in conversation.messages %}
-                                {% if not message.is_read and message.sender_id != current_user.id %}
-                                    {% set unread.count = unread.count + 1 %}
-                                {% endif %}
-                            {% endfor %}
-                            {% if unread.count > 0 %}
-                                <span class="badge bg-primary rounded-pill">{{ unread.count }}</span>
-                            {% endif %}
+                        {% if conversation.latest_message %}
+                            <p class="mb-1 text-truncate">{{ conversation.latest_message.content }}</p>
                         {% else %}
                             <p class="mb-1 text-muted">No messages yet</p>
                         {% endif %}
@@ -43,121 +31,110 @@
             </div>
         </div>
 
-        <!-- Message Thread -->
+        <!-- Messages Area -->
         <div class="col-md-8">
-            {% if current_conversation %}
-                {% set other_user = current_conversation.participants|selectattr('id', 'ne', current_user.id)|first %}
-                <h4 class="mb-3">{{ other_user.username }}</h4>
-                <div class="message-thread mb-3" id="messageThread" style="height: 60vh; overflow-y: auto;">
-                    {% for message in current_conversation.messages %}
-                        <div class="message mb-2 {% if message.sender_id == current_user.id %}text-end{% endif %}">
-                            <div class="message-content {% if message.sender_id == current_user.id %}sent{% else %}received{% endif %} 
-                                     d-inline-block p-2 rounded"
-                                 style="max-width: 70%; {% if message.sender_id == current_user.id %}background-color: #007bff; color: white;{% else %}background-color: #f8f9fa;{% endif %}">
+            {% if selected_conversation %}
+                <div class="chat-header border-bottom p-3">
+                    <h5>{{ other_participant.username }}</h5>
+                </div>
+                <div class="chat-messages p-3" style="height: 60vh; overflow-y: auto;">
+                    {% for message in messages %}
+                        <div class="message mb-3 {% if message.sender_id == current_user.id %}text-end{% endif %}">
+                            <div class="message-content p-2 rounded d-inline-block 
+                                      {% if message.sender_id == current_user.id %}
+                                          bg-primary text-white
+                                      {% else %}
+                                          bg-light
+                                      {% endif %}">
                                 {{ message.content }}
-                                <br>
-                                <small class="text-muted" style="font-size: 0.7em;">
-                                    {{ message.timestamp.strftime('%H:%M') }}
-                                    {% if message.sender_id == current_user.id %}
-                                        <i class="fas fa-check{% if message.is_read %}-double{% endif %}"></i>
-                                    {% endif %}
-                                </small>
+                                <small class="d-block">{{ message.timestamp.strftime('%H:%M') }}</small>
                             </div>
                         </div>
                     {% endfor %}
                 </div>
-                <form method="POST" action="{{ url_for('send_message', conversation_id=current_conversation.id) }}" class="message-form">
-                    <div class="input-group">
-                        <input type="text" name="content" class="form-control" placeholder="Type a message..." required>
+                <div class="chat-input border-top p-3">
+                    <form action="{{ url_for('send_message', conversation_id=selected_conversation.id) }}" method="POST" class="d-flex">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="text" name="content" class="form-control me-2" placeholder="Type a message..." required>
                         <button type="submit" class="btn btn-primary">Send</button>
-                    </div>
-                </form>
+                    </form>
+                </div>
             {% else %}
-                <div class="text-center text-muted mt-5">
-                    <h5>Select a conversation or start a new one</h5>
+                <div class="h-100 d-flex align-items-center justify-content-center">
+                    <p class="text-muted">Select a conversation to start messaging</p>
                 </div>
             {% endif %}
         </div>
     </div>
 </div>
 
-<!-- New Message Modal -->
-<div class="modal fade" id="newMessageModal" tabindex="-1" aria-labelledby="newMessageModalLabel" aria-hidden="true">
+<!-- New Conversation Modal -->
+<div class="modal fade" id="newConversationModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="newMessageModalLabel">New Message</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">New Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="newMessageForm">
-                    <div class="mb-3">
-                        <label for="recipient" class="form-label">Send to:</label>
-                        <select class="form-select" id="recipient" name="recipient" required>
-                            <option value="">Choose a user you follow...</option>
-                            {% for user in followed_users %}
-                            <option value="{{ user.id }}">{{ user.username }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="messageContent" class="form-label">Message:</label>
-                        <textarea class="form-control" id="messageContent" name="messageContent" rows="3" required></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="sendNewMessage()">Send Message</button>
+                <div class="mb-3">
+                    <label for="recipient" class="form-label">To:</label>
+                    <select class="form-select" id="recipient" required>
+                        <option value="">Choose a user...</option>
+                        {% for user in current_user.following %}
+                            <option value="{{ user.followed.id }}">{{ user.followed.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="message" class="form-label">Message:</label>
+                    <textarea class="form-control" id="message" rows="3" required></textarea>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="sendNewMessage()">Send</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // Scroll to bottom of message thread
-    function scrollToBottom() {
-        var messageThread = document.getElementById('messageThread');
-        if (messageThread) {
-            messageThread.scrollTop = messageThread.scrollHeight;
-        }
+function sendNewMessage() {
+    const recipientId = document.getElementById('recipient').value;
+    const messageContent = document.getElementById('message').value;
+
+    if (!recipientId || !messageContent) {
+        alert('Please fill in all fields');
+        return;
     }
 
-    // Scroll on page load
-    scrollToBottom();
+    fetch('{{ url_for("new_conversation") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            recipient_id: recipientId,
+            message: messageContent
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = '/messages/' + data.conversation_id;
+        } else {
+            alert(data.error || 'Failed to send message');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while sending the message');
+    });
+}
 
-    // Check for new messages every 3 seconds
-    setInterval(function() {
-        {% if current_conversation %}
-            fetch('{{ url_for("get_messages", conversation_id=current_conversation.id) }}')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.messages) {
-                        const messageThread = document.getElementById('messageThread');
-                        messageThread.innerHTML = '';
-                        data.messages.forEach(message => {
-                            const messageDiv = document.createElement('div');
-                            messageDiv.className = `message mb-2 ${message.sender_id === {{ current_user.id }} ? 'text-end' : ''}`;
-                            messageDiv.innerHTML = `
-                                <div class="message-content ${message.sender_id === {{ current_user.id }} ? 'sent' : 'received'} 
-                                         d-inline-block p-2 rounded"
-                                     style="max-width: 70%; ${message.sender_id === {{ current_user.id }} ? 'background-color: #007bff; color: white;' : 'background-color: #f8f9fa;'}">
-                                    ${message.content}
-                                    <br>
-                                    <small class="text-muted" style="font-size: 0.7em;">
-                                        ${message.timestamp}
-                                        ${message.sender_id === {{ current_user.id }} ? 
-                                            `<i class="fas fa-check${message.is_read ? '-double' : ''}"></i>` : ''}
-                                    </small>
-                                </div>
-                            `;
-                            messageThread.appendChild(messageDiv);
-                        });
-                        scrollToBottom();
-                    }
-                });
-        {% endif %}
-    }, 3000);
+// Scroll to bottom of messages
+const chatMessages = document.querySelector('.chat-messages');
+if (chatMessages) {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
 </script>
-
 {% endblock %}
