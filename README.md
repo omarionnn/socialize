@@ -74,7 +74,7 @@ A modern social networking platform built with Flask and Bootstrap 5, featuring 
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd twitter_mod
+cd socialize
 ```
 
 2. Create and activate a virtual environment:
