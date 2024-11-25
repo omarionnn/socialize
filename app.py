@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 import re
 from flask_wtf.csrf import CSRFProtect
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField
+from wtforms import StringField, PasswordField, SubmitField, BooleanField
 from wtforms.validators import DataRequired, Length, Email
 
 # Set up logging
@@ -25,8 +25,8 @@ db_path = os.path.join(instance_dir, 'twitter.db')
 os.makedirs(instance_dir, exist_ok=True)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key'
-csrf = CSRFProtect(app)
+app.config['SECRET_KEY'] = 'your-secret-key'  # Make sure this is set
+csrf = CSRFProtect(app)  # Initialize CSRF protection
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -76,11 +76,13 @@ class User(db.Model, UserMixin):
     following = db.relationship('Follow',
                             foreign_keys='Follow.follower_id',
                             backref=db.backref('follower', lazy='joined'),
-                            lazy='dynamic')
+                            lazy='dynamic',
+                            cascade='all, delete-orphan')
     followers = db.relationship('Follow',
                             foreign_keys='Follow.followed_id',
                             backref=db.backref('followed', lazy='joined'),
-                            lazy='dynamic')
+                            lazy='dynamic',
+                            cascade='all, delete-orphan')
     messages_sent = db.relationship('Message',
                                 foreign_keys='Message.sender_id',
                                 backref=db.backref('sender', lazy=True),
@@ -90,7 +92,25 @@ class User(db.Model, UserMixin):
                                 lazy='dynamic')
 
     def is_following(self, user):
-        return self.following.filter_by(followed_id=user.id).first() is not None
+        if user is None:
+            return False
+        return Follow.query.filter_by(
+            follower_id=self.id,
+            followed_id=user.id
+        ).first() is not None
+
+    def follow(self, user):
+        if not self.is_following(user):
+            f = Follow(follower_id=self.id, followed_id=user.id)
+            db.session.add(f)
+
+    def unfollow(self, user):
+        f = Follow.query.filter_by(
+            follower_id=self.id,
+            followed_id=user.id
+        ).first()
+        if f:
+            db.session.delete(f)
 
 class Tweet(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -378,9 +398,8 @@ def retweet(tweet_id):
 
 @app.route('/user/<string:username>')
 def user_profile(username):
-    logger.debug('User profile route accessed')
     user = User.query.filter_by(username=username).first_or_404()
-    tweets = Tweet.query.filter_by(author=user).order_by(Tweet.date_posted.desc()).all()
+    tweets = Tweet.query.filter_by(user_id=user.id).order_by(Tweet.date_posted.desc()).all()
     form = FollowForm()
     return render_template('profile.html', user=user, tweets=tweets, form=form)
 
@@ -390,20 +409,22 @@ def follow(username):
     form = FollowForm()
     if form.validate_on_submit():
         user = User.query.filter_by(username=username).first_or_404()
+        
         if user == current_user:
             flash('You cannot follow yourself!', 'danger')
             return redirect(url_for('user_profile', username=username))
         
         if current_user.is_following(user):
-            current_user.following.remove(user)
+            current_user.unfollow(user)
+            db.session.commit()
             flash(f'You have unfollowed {username}!', 'success')
         else:
-            follow = Follow(follower_id=current_user.id, followed_id=user.id)
-            db.session.add(follow)
+            current_user.follow(user)
+            db.session.commit()
             flash(f'You are now following {username}!', 'success')
-        
-        db.session.commit()
-        return redirect(url_for('user_profile', username=username))
+    else:
+        flash('Form validation failed. Please try again.', 'danger')
+        app.logger.error(f'Form errors: {form.errors}')
     
     return redirect(url_for('user_profile', username=username))
 
@@ -619,4 +640,4 @@ def after_request(response):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=8000)
+    app.run(debug=True, port=8080)
