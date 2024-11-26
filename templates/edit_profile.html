@@ -31,13 +31,13 @@
                             <img src="{{ url_for('uploaded_file', filename=current_user.profile_pic) }}" 
                                  class="rounded-circle" style="width: 150px; height: 150px; object-fit: cover;" 
                                  alt="Profile picture">
-                            <form action="{{ url_for('upload_profile_pic') }}" method="POST" 
-                                  enctype="multipart/form-data" class="position-absolute bottom-0 end-0">
-                                <label class="btn btn-light btn-sm rounded-circle">
-                                    <i class="fas fa-camera"></i>
-                                    <input type="file" name="profile_pic" class="d-none" 
-                                           accept="image/*" onchange="this.form.submit()">
-                                </label>
+                            <form action="{{ url_for('upload_profile_pic') }}" method="post" enctype="multipart/form-data" class="mb-4">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <div class="mb-3">
+                                    <label for="file" class="form-label">Profile Picture</label>
+                                    <input type="file" class="form-control" id="file" name="file" accept="image/*">
+                                </div>
+                                <button type="submit" class="btn btn-primary">Update Profile Picture</button>
                             </form>
                         </div>
                     </div>

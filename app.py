@@ -9,8 +9,13 @@ from werkzeug.utils import secure_filename
 import re
 from flask_wtf.csrf import CSRFProtect
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, BooleanField
+from wtforms import StringField, PasswordField, SubmitField, BooleanField, TextAreaField
 from wtforms.validators import DataRequired, Length, Email
+import random
+from sqlalchemy import func
+import requests
+from bs4 import BeautifulSoup
+import time
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -26,13 +31,20 @@ os.makedirs(instance_dir, exist_ok=True)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'  # Make sure this is set
-csrf = CSRFProtect(app)  # Initialize CSRF protection
+csrf = CSRFProtect()
+csrf.init_app(app)  # Initialize CSRF protection
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['WTF_CSRF_ENABLED'] = True
+app.config['WTF_CSRF_TIME_LIMIT'] = 3600  # 1 hour
 
 # File upload configuration
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads', 'profile_pics')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
@@ -46,7 +58,52 @@ bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# Database Models
+followers = db.Table('followers',
+    db.Column('follower_id', db.Integer, db.ForeignKey('user.id')),
+    db.Column('followed_id', db.Integer, db.ForeignKey('user.id'))
+)
+
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password = db.Column(db.String(120), nullable=False)
+    anonymous_name = db.Column(db.String(80), unique=True, nullable=False)
+    profile_pic = db.Column(db.String(120), nullable=False, default='default.jpg')
+    cover_photo = db.Column(db.String(120), nullable=False, default='default_cover.jpg')
+    tweets = db.relationship('Tweet', backref='author', lazy=True)
+    following = db.relationship(
+        'User', secondary=followers,
+        primaryjoin=(followers.c.follower_id == id),
+        secondaryjoin=(followers.c.followed_id == id),
+        backref=db.backref('followers', lazy='dynamic'),
+        lazy='dynamic'
+    )
+
+    def __init__(self, *args, **kwargs):
+        super(User, self).__init__(*args, **kwargs)
+        if not self.anonymous_name:
+            while True:
+                anonymous_name = f"Anonymous{random.randint(1000, 9999)}"
+                if not User.query.filter_by(anonymous_name=anonymous_name).first():
+                    self.anonymous_name = anonymous_name
+                    break
+
+    def get_display_name(self):
+        """Return the anonymous name for public display"""
+        return self.anonymous_name
+
+    def follow(self, user):
+        if not self.is_following(user):
+            self.following.append(user)
+
+    def unfollow(self, user):
+        if self.is_following(user):
+            self.following.remove(user)
+
+    def is_following(self, user):
+        return self.following.filter(followers.c.followed_id == user.id).count() > 0
+
 class Hashtag(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
@@ -60,57 +117,6 @@ tweet_hashtags = db.Table('tweet_hashtags',
     db.Column('tweet_id', db.Integer, db.ForeignKey('tweet.id'), primary_key=True),
     db.Column('hashtag_id', db.Integer, db.ForeignKey('hashtag.id'), primary_key=True)
 )
-
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(20), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(60), nullable=False)
-    profile_pic = db.Column(db.String(120), nullable=False, default='profile_pics/default.jpg')
-    bio = db.Column(db.String(500))
-    cover_photo = db.Column(db.String(100), default='default_cover.jpg')
-    is_verified = db.Column(db.Boolean, default=False)
-    tweets = db.relationship('Tweet', backref='author', lazy=True)
-    likes = db.relationship('Like', backref='user', lazy=True)
-    retweets = db.relationship('Retweet', backref='user', lazy=True)
-    following = db.relationship('Follow',
-                            foreign_keys='Follow.follower_id',
-                            backref=db.backref('follower', lazy='joined'),
-                            lazy='dynamic',
-                            cascade='all, delete-orphan')
-    followers = db.relationship('Follow',
-                            foreign_keys='Follow.followed_id',
-                            backref=db.backref('followed', lazy='joined'),
-                            lazy='dynamic',
-                            cascade='all, delete-orphan')
-    messages_sent = db.relationship('Message',
-                                foreign_keys='Message.sender_id',
-                                backref=db.backref('sender', lazy=True),
-                                lazy='dynamic')
-    conversations = db.relationship('ConversationParticipants',
-                                backref=db.backref('user', lazy=True),
-                                lazy='dynamic')
-
-    def is_following(self, user):
-        if user is None:
-            return False
-        return Follow.query.filter_by(
-            follower_id=self.id,
-            followed_id=user.id
-        ).first() is not None
-
-    def follow(self, user):
-        if not self.is_following(user):
-            f = Follow(follower_id=self.id, followed_id=user.id)
-            db.session.add(f)
-
-    def unfollow(self, user):
-        f = Follow.query.filter_by(
-            follower_id=self.id,
-            followed_id=user.id
-        ).first()
-        if f:
-            db.session.delete(f)
 
 class Tweet(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -158,14 +164,6 @@ class ConversationParticipants(db.Model):
     conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@login_manager.user_loader
-def load_user(user_id):
-    logger.debug('Loading user with id: %s', user_id)
-    return User.query.get(int(user_id))
-
 class RegistrationForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired(), Length(min=2, max=20)])
     email = StringField('Email', validators=[DataRequired(), Email()])
@@ -188,63 +186,159 @@ class MessageForm(FlaskForm):
     content = StringField('Message', validators=[DataRequired()])
     submit = SubmitField('Send')
 
+class News(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    url = db.Column(db.String(500), nullable=False, unique=True)
+    summary = db.Column(db.Text)
+    image_url = db.Column(db.String(500))
+    published_date = db.Column(db.DateTime, nullable=False)
+    comments = db.relationship('NewsComment', backref='news', lazy=True)
+
+class NewsComment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    news_id = db.Column(db.Integer, db.ForeignKey('news.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+class NewsCommentForm(FlaskForm):
+    content = TextAreaField('Comment', validators=[DataRequired(), Length(min=1, max=500)])
+    submit = SubmitField('Post Comment')
+
+def get_trending_categories():
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get('https://calvinchimes.org', headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Find the categories from the navigation menu
+        categories = []
+        nav_menu = soup.find('ul', class_='nav-menu')
+        if nav_menu:
+            category_items = nav_menu.find_all('li', class_='menu-item')
+            for item in category_items:
+                link = item.find('a')
+                if link:
+                    category = {
+                        'name': link.text.strip(),
+                        'url': link['href'],
+                        'count': News.query.filter(News.url.like(f"%{link['href']}%")).count()
+                    }
+                    categories.append(category)
+        
+        # Sort by article count
+        categories.sort(key=lambda x: x['count'], reverse=True)
+        return categories[:5]  # Return top 5 categories
+    except Exception as e:
+        print(f"Error fetching categories: {str(e)}")
+        return []
+
 # Routes
 @app.route('/')
 @app.route('/home')
 def home():
-    logger.debug('Home route accessed')
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    
     if current_user.is_authenticated:
-        logger.debug('User is authenticated, retrieving followed users')
-        tweets = Tweet.query.order_by(Tweet.date_posted.desc()).all()
+        followed_users = [user.id for user in current_user.following.all()]
+        followed_users.append(current_user.id)
+        tweets = Tweet.query.filter(Tweet.user_id.in_(followed_users)).order_by(Tweet.date_posted.desc())
     else:
-        logger.debug('User is not authenticated, retrieving all tweets')
-        tweets = Tweet.query.order_by(Tweet.date_posted.desc()).all()
-
+        tweets = Tweet.query.order_by(Tweet.date_posted.desc())
+    
+    tweets = tweets.paginate(page=page, per_page=per_page)
+    
+    # Get trending categories for the sidebar
+    trending_categories = get_trending_categories()
+    
+    if request.headers.get('HX-Request'):
+        return render_template('_tweets.html', tweets=tweets)
+    
     form = TweetForm()
-    all_users = User.query.all()
-    return render_template('home.html', tweets=tweets, all_users=all_users, form=form)
+    return render_template('home.html', tweets=tweets, form=form, trending_categories=trending_categories)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    logger.debug('Register route accessed')
     if current_user.is_authenticated:
-        logger.debug('User already authenticated, redirecting to home')
         return redirect(url_for('home'))
     
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        logger.debug('Processing POST request')
-        
-        # Check if username already exists
-        existing_user = User.query.filter_by(username=form.username.data).first()
-        if existing_user:
-            flash('That username is already taken. Please choose a different one.', 'danger')
-            return render_template('register.html', form=form)
-        
-        # Check if email already exists
-        existing_user = User.query.filter_by(email=form.email.data).first()
-        if existing_user:
-            flash('That email is already registered. Please use a different one.', 'danger')
-            return render_template('register.html', form=form)
-        
+    if request.method == 'POST':
         try:
-            hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
-            user = User(username=form.username.data,
-                       email=form.email.data,
-                       password=hashed_password)
+            username = request.form.get('username', '').strip()
+            email = request.form.get('email', '').strip()
+            password = request.form.get('password', '')
+            confirm_password = request.form.get('confirm_password', '')
+
+            # Validation
+            if not all([username, email, password, confirm_password]):
+                flash('All fields are required', 'danger')
+                return redirect(url_for('register'))
+
+            if len(username) < 3 or len(username) > 20:
+                flash('Username must be between 3 and 20 characters', 'danger')
+                return redirect(url_for('register'))
+
+            if not re.match(r'^[a-zA-Z0-9_]+$', username):
+                flash('Username can only contain letters, numbers, and underscores', 'danger')
+                return redirect(url_for('register'))
+
+            if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email):
+                flash('Please enter a valid email address', 'danger')
+                return redirect(url_for('register'))
+
+            if password != confirm_password:
+                flash('Passwords do not match', 'danger')
+                return redirect(url_for('register'))
+
+            if len(password) < 6:
+                flash('Password must be at least 6 characters long', 'danger')
+                return redirect(url_for('register'))
+
+            # Check existing users
+            if User.query.filter_by(username=username).first():
+                flash('Username already exists', 'danger')
+                return redirect(url_for('register'))
+
+            if User.query.filter_by(email=email).first():
+                flash('Email already exists', 'danger')
+                return redirect(url_for('register'))
+
+            # Generate unique anonymous name
+            while True:
+                anonymous_name = f"Anonymous{random.randint(1000, 9999)}"
+                if not User.query.filter_by(anonymous_name=anonymous_name).first():
+                    break
+
+            # Create new user
+            hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+            user = User(
+                username=username,
+                email=email,
+                password=hashed_password,
+                anonymous_name=anonymous_name,
+                profile_pic='default.jpg',
+                cover_photo='default_cover.jpg'
+            )
+            
             db.session.add(user)
             db.session.commit()
-            logger.debug('User registered successfully')
-            flash('Account created successfully! You can now log in.', 'success')
+
+            flash('Account created successfully! You can now log in', 'success')
             return redirect(url_for('login'))
+
         except Exception as e:
             db.session.rollback()
-            logger.error(f'Error during registration: {str(e)}')
-            flash('An error occurred during registration. Please try again.', 'danger')
-            return render_template('register.html', form=form)
-    
-    logger.debug('Rendering register template')
-    return render_template('register.html', form=form)
+            flash('An error occurred. Please try again.', 'danger')
+            app.logger.error(f"Registration error: {str(e)}")
+            return redirect(url_for('register'))
+
+    return render_template('register.html', title='Register')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -301,31 +395,36 @@ def new_tweet():
 @app.route('/upload_profile_pic', methods=['POST'])
 @login_required
 def upload_profile_pic():
-    if 'profile_pic' not in request.files:
-        flash('No file selected', 'danger')
-        return redirect(url_for('user_profile', username=current_user.username))
+    if 'file' not in request.files:
+        flash('No file selected', 'error')
+        return redirect(url_for('edit_profile'))
     
-    file = request.files['profile_pic']
+    file = request.files['file']
     if file.filename == '':
-        flash('No file selected', 'danger')
-        return redirect(url_for('user_profile', username=current_user.username))
+        flash('No file selected', 'error')
+        return redirect(url_for('edit_profile'))
     
     if file and allowed_file(file.filename):
         try:
-            # Create a secure filename with timestamp
+            # Generate secure filename with username and timestamp
             filename = secure_filename(file.filename)
-            timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-            filename = f"profile_pics/{timestamp}_{filename}"
+            filename = f"{current_user.username}_{int(time.time())}_{filename}"
+            
+            # Ensure upload directory exists
+            os.makedirs(UPLOAD_FOLDER, exist_ok=True)
             
             # Save the file
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file_path = os.path.join(UPLOAD_FOLDER, filename)
             file.save(file_path)
             
             # Delete old profile picture if it exists and it's not the default
-            if current_user.profile_pic != 'profile_pics/default.jpg':
-                old_file = os.path.join(app.config['UPLOAD_FOLDER'], current_user.profile_pic)
+            if current_user.profile_pic and current_user.profile_pic != 'default.png':
+                old_file = os.path.join(UPLOAD_FOLDER, current_user.profile_pic)
                 if os.path.exists(old_file):
-                    os.remove(old_file)
+                    try:
+                        os.remove(old_file)
+                    except Exception as e:
+                        app.logger.error(f"Error deleting old profile picture: {e}")
             
             # Update user's profile picture in database
             current_user.profile_pic = filename
@@ -333,13 +432,18 @@ def upload_profile_pic():
             
             flash('Profile picture updated successfully!', 'success')
         except Exception as e:
-            app.logger.error(f"Error uploading profile picture: {str(e)}")
-            flash('An error occurred while uploading the profile picture', 'danger')
+            app.logger.error(f"Error uploading profile picture: {e}")
+            flash('An error occurred while uploading the profile picture', 'error')
+            return redirect(url_for('edit_profile'))
             
+        return redirect(url_for('edit_profile'))
     else:
-        flash('Invalid file type. Please use jpg, jpeg, png, or gif files.', 'danger')
-    
-    return redirect(url_for('user_profile', username=current_user.username))
+        flash('Invalid file type. Please upload a PNG, JPG, JPEG, or GIF file.', 'error')
+        return redirect(url_for('edit_profile'))
+
+@app.route('/static/uploads/profile_pics/<path:filename>')
+def serve_profile_pic(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 @app.route('/upload_cover_photo', methods=['POST'])
 @login_required
@@ -373,52 +477,88 @@ def hashtag(tag):
 
 @app.route('/trending')
 def trending():
-    # Get trending hashtags from the last 7 days
-    week_ago = datetime.utcnow() - timedelta(days=7)
-    trending_hashtags = db.session.query(
-        Hashtag,
-        db.func.count(tweet_hashtags.c.tweet_id).label('count')
-    ).join(tweet_hashtags).join(Tweet).filter(
-        Tweet.date_posted >= week_ago
-    ).group_by(Hashtag.id).order_by(
-        db.text('count DESC')
-    ).limit(10).all()
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
     
-    return render_template('trending.html', trending_hashtags=trending_hashtags)
+    # Always try to fetch news
+    if fetch_calvin_chimes_news():
+        logger.info("News fetched successfully")
+    else:
+        logger.error("Failed to fetch news")
+    
+    # Get news items for the sidebar
+    news_items = News.query.order_by(News.published_date.desc()).paginate(page=page, per_page=per_page)
+    
+    # Get messages for the main content
+    if current_user.is_authenticated:
+        messages = Message.query.join(
+            ConversationParticipants, 
+            Message.conversation_id == ConversationParticipants.conversation_id
+        ).filter(
+            ConversationParticipants.user_id == current_user.id
+        ).order_by(Message.timestamp.desc()).limit(20).all()
+    else:
+        messages = []
+    
+    return render_template('trending.html', news_items=news_items, messages=messages)
 
 @app.route('/tweet/<int:tweet_id>/like', methods=['POST'])
 @login_required
 def like_tweet(tweet_id):
-    logger.debug('Like tweet route accessed')
     tweet = Tweet.query.get_or_404(tweet_id)
     like = Like.query.filter_by(user_id=current_user.id, tweet_id=tweet.id).first()
-    if like:
-        logger.debug('Tweet already liked, removing like')
-        db.session.delete(like)
-    else:
-        logger.debug('Tweet not liked, adding like')
-        like = Like(user_id=current_user.id, tweet_id=tweet.id)
-        db.session.add(like)
-    db.session.commit()
-    logger.debug('Like updated successfully')
-    return jsonify({'likes': len(tweet.likes)})
+    
+    try:
+        if like:
+            db.session.delete(like)
+            db.session.commit()
+            liked = False
+        else:
+            like = Like(user_id=current_user.id, tweet_id=tweet.id)
+            db.session.add(like)
+            db.session.commit()
+            liked = True
+            
+        return jsonify({
+            'success': True,
+            'liked': liked,
+            'likes_count': len(tweet.likes)
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
 
 @app.route('/tweet/<int:tweet_id>/retweet', methods=['POST'])
 @login_required
 def retweet(tweet_id):
-    logger.debug('Retweet route accessed')
     tweet = Tweet.query.get_or_404(tweet_id)
     retweet = Retweet.query.filter_by(user_id=current_user.id, tweet_id=tweet.id).first()
-    if retweet:
-        logger.debug('Tweet already retweeted, removing retweet')
-        db.session.delete(retweet)
-    else:
-        logger.debug('Tweet not retweeted, adding retweet')
-        retweet = Retweet(user_id=current_user.id, tweet_id=tweet.id)
-        db.session.add(retweet)
-    db.session.commit()
-    logger.debug('Retweet updated successfully')
-    return jsonify({'retweets': len(tweet.retweets)})
+    
+    try:
+        if retweet:
+            db.session.delete(retweet)
+            db.session.commit()
+            retweeted = False
+        else:
+            retweet = Retweet(user_id=current_user.id, tweet_id=tweet.id)
+            db.session.add(retweet)
+            db.session.commit()
+            retweeted = True
+            
+        return jsonify({
+            'success': True,
+            'retweeted': retweeted,
+            'retweets_count': len(tweet.retweets)
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
 
 @app.route('/user/<string:username>')
 def user_profile(username):
@@ -430,27 +570,19 @@ def user_profile(username):
 @app.route('/follow/<string:username>', methods=['POST'])
 @login_required
 def follow(username):
-    form = FollowForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(username=username).first_or_404()
-        
-        if user == current_user:
-            flash('You cannot follow yourself!', 'danger')
-            return redirect(url_for('user_profile', username=username))
-        
-        if current_user.is_following(user):
-            current_user.unfollow(user)
-            db.session.commit()
-            flash(f'You have unfollowed {username}!', 'success')
-        else:
-            current_user.follow(user)
-            db.session.commit()
-            flash(f'You are now following {username}!', 'success')
-    else:
-        flash('Form validation failed. Please try again.', 'danger')
-        app.logger.error(f'Form errors: {form.errors}')
+    user = User.query.filter_by(username=username).first_or_404()
+    if user == current_user:
+        flash('You cannot follow yourself!', 'danger')
+        return redirect(url_for('home'))
     
-    return redirect(url_for('user_profile', username=username))
+    if current_user.is_following(user):
+        current_user.unfollow(user)
+        flash(f'You have unfollowed {user.get_display_name()}!', 'success')
+    else:
+        current_user.follow(user)
+        flash(f'You are now following {user.get_display_name()}!', 'success')
+    
+    return redirect(request.referrer or url_for('home'))
 
 @app.route('/edit_profile', methods=['GET', 'POST'])
 @login_required
@@ -464,7 +596,7 @@ def edit_profile():
 
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 @app.route('/messages')
 @app.route('/messages/<int:conversation_id>')
@@ -679,6 +811,97 @@ def new_conversation():
         app.logger.error(f'Error in new_conversation: {str(e)}')
         db.session.rollback()
         return jsonify({'error': 'An error occurred while sending the message'}), 500
+
+@app.route('/news')
+def news():
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    news_items = News.query.order_by(News.published_date.desc()).paginate(page=page, per_page=per_page)
+    return render_template('news.html', news_items=news_items)
+
+@app.route('/news/<int:news_id>')
+def news_detail(news_id):
+    news_item = News.query.get_or_404(news_id)
+    form = NewsCommentForm()
+    return render_template('news_detail.html', news=news_item, form=form)
+
+@app.route('/news/<int:news_id>/comment', methods=['POST'])
+@login_required
+def add_news_comment(news_id):
+    news_item = News.query.get_or_404(news_id)
+    form = NewsCommentForm()
+    if form.validate_on_submit():
+        comment = NewsComment(
+            content=form.content.data,
+            news_id=news_id,
+            user_id=current_user.id
+        )
+        db.session.add(comment)
+        db.session.commit()
+        flash('Your comment has been posted!', 'success')
+    return redirect(url_for('news_detail', news_id=news_id))
+
+def fetch_calvin_chimes_news():
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get('https://calvinchimes.org', headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        articles = soup.find_all('article', class_='post')
+        
+        for article in articles[:10]:  # Get top 10 articles
+            # Get the title and link
+            title_elem = article.find('h2', class_='entry-title')
+            if not title_elem or not title_elem.find('a'):
+                continue
+                
+            title = title_elem.find('a').text.strip()
+            url = title_elem.find('a')['href']
+            
+            # Check if article already exists
+            if News.query.filter_by(url=url).first():
+                continue
+            
+            # Get the summary
+            summary_elem = article.find('div', class_='entry-content')
+            summary = summary_elem.text.strip() if summary_elem else ''
+            
+            # Get the image
+            image_elem = article.find('img')
+            image_url = image_elem['src'] if image_elem and 'src' in image_elem.attrs else None
+            
+            # Get the date
+            date_elem = article.find('time', class_='entry-date')
+            if date_elem and 'datetime' in date_elem.attrs:
+                published_date = datetime.strptime(date_elem['datetime'][:19], '%Y-%m-%dT%H:%M:%S')
+            else:
+                published_date = datetime.utcnow()
+            
+            # Create new news article
+            news = News(
+                title=title,
+                url=url,
+                summary=summary[:500] + '...' if len(summary) > 500 else summary,
+                image_url=image_url,
+                published_date=published_date
+            )
+            db.session.add(news)
+        
+        db.session.commit()
+        logger.info(f"Successfully fetched {len(articles)} articles from Calvin Chimes")
+        return True
+    except Exception as e:
+        logger.error(f"Error fetching news: {str(e)}")
+        db.session.rollback()
+        return False
+
+@login_manager.user_loader
+def load_user(user_id):
+    logger.debug('Loading user with id: %s', user_id)
+    return User.query.get(int(user_id))
 
 @app.after_request
 def after_request(response):

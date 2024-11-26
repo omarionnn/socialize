@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="card mb-4">
+        {% if news.image_url %}
+        <img src="{{ news.image_url }}" class="card-img-top" alt="{{ news.title }}" style="max-height: 400px; object-fit: cover;">
+        {% endif %}
+        <div class="card-body">
+            <h1 class="card-title">{{ news.title }}</h1>
+            <p class="text-muted">Published on {{ news.published_date.strftime('%B %d, %Y') }}</p>
+            {% if news.summary %}
+            <p class="card-text">{{ news.summary }}</p>
+            {% endif %}
+            <a href="{{ news.url }}" class="btn btn-primary" target="_blank">Read Full Article</a>
+        </div>
+    </div>
+
+    <!-- Comments Section -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4>Comments ({{ news.comments|length }})</h4>
+        </div>
+        <div class="card-body">
+            {% if current_user.is_authenticated %}
+            <form method="POST" action="{{ url_for('add_news_comment', news_id=news.id) }}">
+                {{ form.hidden_tag() }}
+                <div class="mb-3">
+                    {{ form.content.label(class="form-label") }}
+                    {{ form.content(class="form-control", rows="3") }}
+                    {% for error in form.content.errors %}
+                    <span class="text-danger">{{ error }}</span>
+                    {% endfor %}
+                </div>
+                {{ form.submit(class="btn btn-primary mb-4") }}
+            </form>
+            {% else %}
+            <p>Please <a href="{{ url_for('login') }}">login</a> to comment.</p>
+            {% endif %}
+
+            <!-- Display Comments -->
+            {% for comment in news.comments|sort(attribute='created_at', reverse=true) %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <p class="card-text">{{ comment.content }}</p>
+                    <p class="card-text">
+                        <small class="text-muted">
+                            Posted by {{ comment.author.anonymous_name }} on {{ comment.created_at.strftime('%B %d, %Y %I:%M %p') }}
+                        </small>
+                    </p>
+                </div>
+            </div>
+            {% else %}
+            <p>No comments yet. Be the first to comment!</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock content %}

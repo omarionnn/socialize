@@ -88,9 +88,13 @@ updateTimestamps();
 setInterval(updateTimestamps, 30000);
 
 // Like and Retweet functionality
-document.querySelectorAll('.like-btn').forEach(button => {
-    button.addEventListener('click', function() {
-        const tweetId = this.dataset.tweetId;
+document.addEventListener('click', function(e) {
+    // Handle likes
+    if (e.target.closest('.like-btn')) {
+        const button = e.target.closest('.like-btn');
+        const tweetId = button.dataset.tweetId;
+        const likeCount = button.querySelector('.like-count');
+        
         fetch(`/tweet/${tweetId}/like`, { 
             method: 'POST',
             headers: {
@@ -100,20 +104,29 @@ document.querySelectorAll('.like-btn').forEach(button => {
         })
         .then(response => response.json())
         .then(data => {
-            this.querySelector('.like-count').textContent = data.likes;
-            const icon = this.querySelector('i');
-            icon.classList.toggle('far');
-            icon.classList.toggle('fas');
-            icon.classList.toggle('text-danger');
+            if (data.success) {
+                // Toggle the liked state
+                button.classList.toggle('liked', data.liked);
+                if (likeCount) {
+                    likeCount.textContent = data.likes_count;
+                }
+                // Update the icon
+                const icon = button.querySelector('i');
+                if (icon) {
+                    icon.className = data.liked ? 'fas fa-heart text-danger' : 'far fa-heart';
+                }
+            }
         })
         .catch(error => console.error('Error:', error));
-    });
-});
-
-document.querySelectorAll('.retweet-btn').forEach(button => {
-    button.addEventListener('click', function() {
-        const tweetId = this.dataset.tweetId;
-        fetch(`/tweet/${tweetId}/retweet`, { 
+    }
+    
+    // Handle retweets
+    if (e.target.closest('.retweet-btn')) {
+        const button = e.target.closest('.retweet-btn');
+        const tweetId = button.dataset.tweetId;
+        const retweetCount = button.querySelector('.retweet-count');
+        
+        fetch(`/tweet/${tweetId}/retweet`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -122,14 +135,21 @@ document.querySelectorAll('.retweet-btn').forEach(button => {
         })
         .then(response => response.json())
         .then(data => {
-            this.querySelector('.retweet-count').textContent = data.retweets;
-            const icon = this.querySelector('i');
-            icon.classList.toggle('far');
-            icon.classList.toggle('fas');
-            icon.classList.toggle('text-success');
+            if (data.success) {
+                // Toggle the retweeted state
+                button.classList.toggle('retweeted', data.retweeted);
+                if (retweetCount) {
+                    retweetCount.textContent = data.retweets_count;
+                }
+                // Update the icon
+                const icon = button.querySelector('i');
+                if (icon) {
+                    icon.className = data.retweeted ? 'fas fa-retweet text-success' : 'fas fa-retweet';
+                }
+            }
         })
         .catch(error => console.error('Error:', error));
-    });
+    }
 });
 
 async function sendNewMessage() {

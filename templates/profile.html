@@ -5,7 +5,7 @@
         <div class="col-md-8 offset-md-2">
             <div class="card">
                 <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0">{{ user.username }}'s Profile</h4>
+                    <h4 class="mb-0">{{ user.get_display_name() }}'s Profile</h4>
                 </div>
                 <div class="card-body">
                     <div class="text-center mb-4">
@@ -27,7 +27,7 @@
                         </div>
 
                         <!-- User Info -->
-                        <h5 class="card-title">{{ user.username }}</h5>
+                        <h5 class="card-title">{{ user.get_display_name() }}</h5>
                         <p class="card-text">{{ user.bio or "No bio yet" }}</p>
                         
                         {% if user != current_user %}
@@ -37,6 +37,11 @@
                                     {% if current_user.is_following(user) %}Unfollow{% else %}Follow{% endif %}
                                 </button>
                             </form>
+                            {% if current_user.is_following(user) and user.is_following(current_user) %}
+                                <a href="{{ url_for('messages', user_id=user.id) }}" class="btn btn-primary">
+                                    Message
+                                </a>
+                            {% endif %}
                         {% endif %}
                     </div>
 

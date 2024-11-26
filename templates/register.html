@@ -1,50 +1,220 @@
 {% extends "base.html" %}
 {% block content %}
-    <div class="row">
-        <div class="col-md-6 offset-md-3">
-            <div class="card">
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card auth-card">
+                <div class="card-header text-center">
+                    <h2 class="mb-0">Join Socialize</h2>
+                    <p class="text-muted mb-0">Create your anonymous social experience</p>
+                </div>
                 <div class="card-body">
-                    <h2 class="card-title text-center mb-4">Register</h2>
-                    <form method="POST" action="">
-                        {{ form.hidden_tag() }}
-                        <div class="mb-3">
-                            <label for="username" class="form-label">Username</label>
-                            {{ form.username(class="form-control") }}
-                            {% if form.username.errors %}
-                                {% for error in form.username.errors %}
-                                    <div class="text-danger">{{ error }}</div>
+                    <form method="POST" action="{{ url_for('register') }}" class="needs-validation" novalidate>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                    </div>
                                 {% endfor %}
                             {% endif %}
+                        {% endwith %}
+                        
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control" id="username" name="username" 
+                                   placeholder="Username" required pattern="[a-zA-Z0-9_]+" 
+                                   minlength="3" maxlength="20">
+                            <label for="username">Username</label>
+                            <div class="invalid-feedback">
+                                Username must be 3-20 characters long and can only contain letters, numbers, and underscores.
+                            </div>
                         </div>
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            {{ form.email(class="form-control") }}
-                            {% if form.email.errors %}
-                                {% for error in form.email.errors %}
-                                    <div class="text-danger">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
+                        
+                        <div class="form-floating mb-3">
+                            <input type="email" class="form-control" id="email" name="email" 
+                                   placeholder="name@example.com" required>
+                            <label for="email">Email address</label>
+                            <div class="invalid-feedback">
+                                Please enter a valid email address.
+                            </div>
                         </div>
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Password</label>
-                            {{ form.password(class="form-control") }}
-                            {% if form.password.errors %}
-                                {% for error in form.password.errors %}
-                                    <div class="text-danger">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
+                        
+                        <div class="form-floating mb-3">
+                            <input type="password" class="form-control" id="password" name="password" 
+                                   placeholder="Password" required minlength="6">
+                            <label for="password">Password</label>
+                            <div class="invalid-feedback">
+                                Password must be at least 6 characters long.
+                            </div>
                         </div>
+                        
+                        <div class="form-floating mb-4">
+                            <input type="password" class="form-control" id="confirm_password" 
+                                   name="confirm_password" placeholder="Confirm Password" required>
+                            <label for="confirm_password">Confirm Password</label>
+                            <div class="invalid-feedback">
+                                Passwords must match.
+                            </div>
+                        </div>
+
                         <div class="d-grid">
-                            {{ form.submit(class="btn btn-primary") }}
+                            <button class="btn btn-primary btn-lg" type="submit">
+                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                Create Account
+                            </button>
                         </div>
                     </form>
-                    <div class="text-center mt-3">
-                        <small class="text-muted">
-                            Already have an account? <a href="{{ url_for('login') }}">Login</a>
-                        </small>
-                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <p class="mb-0">Already have an account? <a href="{{ url_for('login') }}" class="text-primary">Log In</a></p>
                 </div>
             </div>
         </div>
     </div>
+</div>
+
+<style>
+    .auth-card {
+        border: none;
+        border-radius: 20px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .auth-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+
+    .card-header {
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+        color: white;
+        padding: 2rem 1.5rem;
+        border-bottom: none;
+    }
+
+    .alert {
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .alert-danger {
+        background-color: #ffe3e3;
+        color: #e53935;
+    }
+
+    .alert-success {
+        background-color: #e8f5e9;
+        color: #2e7d32;
+    }
+
+    .form-floating {
+        position: relative;
+    }
+
+    .form-floating > .form-control {
+        height: calc(3.5rem + 2px);
+        line-height: 1.25;
+        border-radius: 12px;
+    }
+
+    .form-floating > label {
+        padding: 1rem 0.75rem;
+    }
+
+    .form-control:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 0.25rem rgba(46, 125, 50, 0.25);
+    }
+
+    .btn-primary {
+        padding: 0.8rem 2rem;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+        border: none;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(46, 125, 50, 0.3);
+    }
+
+    .btn-primary:active {
+        transform: translateY(0);
+    }
+
+    .card-footer {
+        background: transparent;
+        border-top: 1px solid rgba(0, 0, 0, 0.05);
+        padding: 1.5rem;
+    }
+
+    .text-primary {
+        color: var(--primary-color) !important;
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.2s ease;
+    }
+
+    .text-primary:hover {
+        color: var(--primary-dark) !important;
+    }
+</style>
+
+<script>
+    // Form validation
+    (function () {
+        'use strict'
+        const forms = document.querySelectorAll('.needs-validation')
+        Array.from(forms).forEach(form => {
+            form.addEventListener('submit', event => {
+                if (!form.checkValidity()) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                } else {
+                    // Show loading spinner
+                    const button = form.querySelector('button[type="submit"]')
+                    const spinner = button.querySelector('.spinner-border')
+                    button.disabled = true
+                    spinner.classList.remove('d-none')
+                }
+                form.classList.add('was-validated')
+            }, false)
+        })
+
+        // Password confirmation validation
+        const password = document.getElementById('password')
+        const confirmPassword = document.getElementById('confirm_password')
+        
+        function validatePassword() {
+            if (password.value !== confirmPassword.value) {
+                confirmPassword.setCustomValidity('Passwords must match')
+            } else {
+                confirmPassword.setCustomValidity('')
+            }
+        }
+
+        password.addEventListener('change', validatePassword)
+        confirmPassword.addEventListener('keyup', validatePassword)
+
+        // Auto-dismiss alerts after 5 seconds
+        const alerts = document.querySelectorAll('.alert')
+        alerts.forEach(alert => {
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alert)
+                bsAlert.close()
+            }, 5000)
+        })
+    })()
+</script>
 {% endblock %}

@@ -6,12 +6,12 @@
         <div class="col-md-3">
             <div class="card profile-card sticky-top" style="top: 20px;">
                 <div class="card-body text-center">
-                    <img src="{{ url_for('uploaded_file', filename='profile_pics/' + current_user.profile_pic) }}" 
+                    <img src="{{ url_for('uploaded_file', filename=current_user.profile_pic) }}" 
                          class="rounded-circle profile-img mb-3" 
                          alt="Profile Picture"
                          style="width: 120px; height: 120px; object-fit: cover;">
-                    <h5 class="card-title">{{ current_user.username }}</h5>
-                    <p class="text-muted">@{{ current_user.username }}</p>
+                    <h5 class="card-title">{{ current_user.get_display_name() }}</h5>
+                    <p class="text-muted">@{{ current_user.get_display_name() }}</p>
                     <div class="d-flex justify-content-around mb-3">
                         <div>
                             <strong>{{ current_user.tweets|length }}</strong>
@@ -50,12 +50,12 @@
             <div class="card mb-3">
                 <div class="card-body">
                     <div class="d-flex mb-3">
-                        <img src="{{ url_for('uploaded_file', filename='profile_pics/' + tweet.user.profile_pic) }}" 
+                        <img src="{{ url_for('uploaded_file', filename=tweet.user.profile_pic) }}" 
                              class="rounded-circle me-3" 
                              alt="Profile Picture"
                              style="width: 48px; height: 48px; object-fit: cover;">
                         <div>
-                            <h6 class="card-title mb-0">{{ tweet.user.username }}</h6>
+                            <h6 class="card-title mb-0">{{ tweet.user.get_display_name() }}</h6>
                             <small class="text-muted">{{ tweet.date_posted.strftime('%B %d, %Y %I:%M %p') }}</small>
                         </div>
                     </div>
@@ -64,9 +64,11 @@
                         <button class="btn btn-outline-primary btn-sm">
                             <i class="far fa-heart"></i> Like
                         </button>
-                        <button class="btn btn-outline-secondary btn-sm">
-                            <i class="far fa-comment"></i> Comment
-                        </button>
+                        {% if current_user.is_following(tweet.user) and tweet.user.is_following(current_user) %}
+                        <a href="{{ url_for('messages', user_id=tweet.user.id) }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="far fa-comment"></i> Message
+                        </a>
+                        {% endif %}
                         <button class="btn btn-outline-success btn-sm">
                             <i class="fas fa-retweet"></i> Retweet
                         </button>

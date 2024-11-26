@@ -9,15 +9,328 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
+        :root {
+            --primary-color: #2E7D32;
+            --primary-light: #4CAF50;
+            --primary-dark: #1B5E20;
+            --accent-color: #81C784;
+            --bg-color: #F1F8E9;
+            --card-bg: #FFFFFF;
+            --text-primary: #212121;
+            --text-secondary: #757575;
+            --border-color: #C8E6C9;
+            --hover-color: #E8F5E9;
+            --shadow-color: rgba(46, 125, 50, 0.1);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        /* Navbar and Dropdown Styles */
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)) !important;
+            box-shadow: 0 2px 12px var(--shadow-color);
+            padding: 0.8rem 0;
+            transition: all 0.3s ease;
+            position: relative;
+            z-index: 1030;
+        }
+
+        .navbar-brand {
+            font-weight: 600;
+            font-size: 1.4rem;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .navbar-brand:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-1px);
+        }
+
         .navbar-profile-pic {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-color);
+            margin-right: 10px;
+            object-fit: cover;
+            transition: all 0.3s ease;
+        }
+
+        .navbar-profile-pic:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 2px var(--primary-light);
+        }
+
+        .navbar-dark .navbar-nav .nav-link {
+            color: rgba(255, 255, 255, 0.9);
+            padding: 0.7rem 1.2rem;
+            margin: 0 0.3rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .navbar-dark .navbar-nav .nav-link:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .navbar-dark .navbar-nav .nav-link.active {
+            background: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+        }
+
+        .dropdown-menu {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            margin-top: 0.5rem;
+            padding: 0.8rem;
+            min-width: 220px;
+            animation: dropdownFade 0.2s ease;
+            z-index: 1031;
+            backdrop-filter: blur(10px);
+            background-color: rgba(255, 255, 255, 0.98);
+        }
+
+        .dropdown-item {
+            color: var(--text-primary);
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            margin: 0.2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .dropdown-item:hover {
+            background-color: var(--hover-color);
+            color: var(--primary-color);
+            transform: translateX(4px);
+        }
+
+        .dropdown-item::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transform: translateX(-100%);
+        }
+
+        .dropdown-item:hover::after {
+            transition: transform 0.5s ease;
+            transform: translateX(100%);
+        }
+
+        /* Enhanced animations */
+        @keyframes dropdownFade {
+            from {
+                opacity: 0;
+                transform: translateY(-8px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* Card Styles */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-5px) scale(1.01);
+            box-shadow: 0 12px 30px var(--shadow-color);
+        }
+
+        .card-header {
+            background: linear-gradient(to right, var(--primary-light), var(--primary-color));
+            color: white;
+            border-radius: 16px 16px 0 0 !important;
+            padding: 1rem 1.5rem;
+        }
+
+        /* Button Styles */
+        .btn {
+            position: relative;
+            overflow: hidden;
+            transform: translate3d(0, 0, 0);
+        }
+
+        .btn::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            background-image: radial-gradient(circle, #fff 10%, transparent 10.01%);
+            background-repeat: no-repeat;
+            background-position: 50%;
+            transform: scale(10, 10);
+            opacity: 0;
+            transition: transform .5s, opacity 1s;
+        }
+
+        .btn:active::after {
+            transform: scale(0, 0);
+            opacity: .3;
+            transition: 0s;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            border: none;
+            border-radius: 8px;
+            padding: 0.6rem 1.2rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px var(--shadow-color);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--shadow-color);
+        }
+
+        /* Enhanced form styles */
+        .form-control {
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            transition: all 0.3s ease;
+            background-color: rgba(255, 255, 255, 0.9);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 4px var(--shadow-color);
+            transform: translateY(-1px);
+        }
+
+        .form-label {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus + .form-label {
+            color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+
+        /* Badge Styles */
+        .badge {
+            padding: 0.4em 0.6em;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .badge-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        /* Toast Notifications */
+        .toast {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+        }
+
+        .toast-header {
+            background: var(--primary-color);
+            color: white;
+            border-radius: 12px 12px 0 0;
+        }
+
+        /* Navbar styles */
+        .navbar {
+            padding: 0.5rem 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .nav-link {
+            padding: 0.5rem 1rem !important;
+            border-radius: 50px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-link:hover {
+            background-color: rgba(29, 161, 242, 0.1);
+            color: #1da1f2 !important;
+        }
+
+        .nav-link i {
+            transition: transform 0.2s ease;
+        }
+
+        .nav-link:hover i {
+            transform: scale(1.1);
+        }
+
+        /* Profile dropdown styles */
+        .dropdown-menu {
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border: none;
+            padding: 0.5rem;
+        }
+
+        .dropdown-item {
+            border-radius: 10px;
+            padding: 0.5rem 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .dropdown-item:hover {
+            background-color: rgba(29, 161, 242, 0.1);
+            color: #1da1f2;
+        }
+
+        .dropdown-item i {
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Profile picture styles */
+        .profile-pic-container {
             width: 32px;
             height: 32px;
-            object-fit: cover;
+            overflow: hidden;
             border-radius: 50%;
-            margin-right: 8px;
+            border: 2px solid var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f8f9fa;
         }
-        .dropdown-toggle::after {
-            display: none;
+
+        .profile-pic {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
     </style>
     <script src="https://unpkg.com/moment@latest/min/moment.min.js"></script>
@@ -26,62 +339,65 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-gradient mb-4">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('home') }}">
-                <i class="fas fa-users me-2"></i>Socialize
+                <i class="fas fa-comment-dots"></i> Socialize
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('home') }}">
-                            <i class="fas fa-home me-1"></i>Home
+                        <a class="nav-link" href="{{ url_for('home') }}" title="Home">
+                            <i class="fas fa-home fa-lg"></i>
+                            <span class="d-lg-none ms-2">Home</span>
                         </a>
                     </li>
                     {% if current_user.is_authenticated %}
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                                <img src="{{ url_for('uploaded_file', filename=current_user.profile_pic) }}" 
-                                     alt="Profile" 
-                                     class="navbar-profile-pic">
-                                {{ current_user.username }}
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="{{ url_for('user_profile', username=current_user.username) }}">Profile</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('edit_profile') }}">Settings</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="{{ url_for('logout') }}">Logout</a></li>
-                            </ul>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('messages') }}">
-                                <i class="fas fa-envelope me-1"></i>Messages
-                                {% set unread_count = namespace(count=0) %}
-                                {% for conv in current_user.conversations %}
-                                    {% for msg in conv.messages %}
-                                        {% if not msg.is_read and msg.sender_id != current_user.id %}
-                                            {% set unread_count.count = unread_count.count + 1 %}
-                                        {% endif %}
-                                    {% endfor %}
-                                {% endfor %}
-                                {% if unread_count.count > 0 %}
-                                    <span class="badge bg-danger rounded-pill">{{ unread_count.count }}</span>
-                                {% endif %}
-                            </a>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('login') }}">
-                                <i class="fas fa-sign-in-alt me-1"></i>Login
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('register') }}">
-                                <i class="fas fa-user-plus me-1"></i>Register
-                            </a>
-                        </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('messages') }}" title="Messages">
+                            <i class="fas fa-envelope fa-lg"></i>
+                            <span class="d-lg-none ms-2">Messages</span>
+                        </a>
+                    </li>
                     {% endif %}
                 </ul>
+                
+                {% if current_user.is_authenticated %}
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <div class="profile-pic-container">
+                            <img src="{{ url_for('static', filename='uploads/profile_pics/' + current_user.profile_pic) }}" 
+                                 alt="Profile Picture" 
+                                 class="profile-pic rounded-circle"
+                                 onerror="this.src='{{ url_for('static', filename='default_profile.png') }}'">
+                        </div>
+                        <span class="d-none d-lg-inline ms-2">{{ current_user.anonymous_name }}</span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('user_profile', username=current_user.username) }}">
+                                <i class="fas fa-user me-2"></i>Profile
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('edit_profile') }}">
+                                <i class="fas fa-cog me-2"></i>Settings
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('logout') }}">
+                                <i class="fas fa-sign-out-alt me-2"></i>Logout
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                {% else %}
+                <div class="navbar-nav">
+                    <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+                    <a class="nav-link" href="{{ url_for('register') }}">Register</a>
+                </div>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -136,6 +452,49 @@
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
             localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add active class to current nav item
+            const currentPath = window.location.pathname;
+            document.querySelectorAll('.nav-link').forEach(link => {
+                if (link.getAttribute('href') === currentPath) {
+                    link.classList.add('active');
+                }
+            });
+
+            // Initialize tooltips
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed bottom-0 end-0 m-3`;
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+            
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+            
+            toast.addEventListener('hidden.bs.toast', function () {
+                document.body.removeChild(toast);
+            });
         }
     </script>
 </body>
